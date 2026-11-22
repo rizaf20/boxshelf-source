@@ -65,6 +65,8 @@ contextBridge.exposeInMainWorld('boxshelf', {
   // (beta.5) a PC game's cover picker
   pcCoverOptions: (id, term) => call('pccover:options', { id, term }),
   pcCoverUse: (id, key) => call('pccover:use', { id, key }),
+  pcCoverBackOwn: id => call('pccover:back-own', { id }),
+  pcCoverBackReset: id => call('pccover:back-reset', { id }),
   steamExit: () => call('steam:exit'), // (beta.12) closes Steam (it lets go of a controller it took over)
   rocketFind: () => call('rocket:find'), // (beta.12, Windows) RocketLauncher
   rocketSystems: exe => call('rocket:systems', { exe }),

@@ -1,7 +1,7 @@
 // (beta.5) Choosing a PC game's cover: Steam, Epic, Quiver and games added by hand (console games have the Art Studio).
 // The options: SteamGridDB's posters (with the player's own SteamGridDB key, Settings → Accounts & services), Steam's own
-// cover for a Steam game, and a picture of your own. The chosen one is kept as data\pc-covers\<game id>.<ext> and wins over
-// every automatic cover (cover(id)); Reset goes back to the automatic one.
+// cover for a Steam game, and a picture of your own. The chosen front is kept as data\pc-covers\<game id>.<ext> and wins over
+// every automatic cover (cover(id)); a separately chosen back is stored under data\pc-covers\back.
 // The page may only show local files, so the posters' thumbnails are fetched here into data\pc-cover-cache (by address,
 // a few at a time) and handed back as bsfile: addresses. The page only ever names a game id and an option's key: the
 // addresses stay here (last options per game).
@@ -13,6 +13,7 @@ let o = { dataDir: '', log: () => {} };
 const EXTS = ['jpg', 'png', 'webp'];
 const safeId = id => String(id || '').toLowerCase().replace(/[^a-z0-9._-]+/g, '-').slice(0, 120);
 const dir = () => path.join(o.dataDir, 'pc-covers'), cacheDir = () => path.join(o.dataDir, 'pc-cover-cache');
+const backDir = () => path.join(dir(), 'back');
 const isFile = p => { try { return fs.statSync(p).isFile(); } catch { return false; } };
 const sha = s => crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 24);
 const steamArt = (appid, name) => [`https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appid}/${name}`, `https://cdn.cloudflare.steamstatic.com/steam/apps/${appid}/${name}`]; // (Steam's public store CDN, as steamart.js)
@@ -23,11 +24,12 @@ function init(opts) { o = Object.assign(o, opts || {}); }
 
 // the chosen cover of a game, or null
 function cover(id) { const b = path.join(dir(), safeId(id)); for (const e of EXTS) if (isFile(b + '.' + e)) return b + '.' + e; return null; }
-function clear(id) { const b = path.join(dir(), safeId(id)); for (const e of EXTS) { try { fs.unlinkSync(b + '.' + e); } catch {} } }
-async function save(id, buf, ext) {
-  fs.mkdirSync(dir(), { recursive: true });
-  const dest = path.join(dir(), safeId(id) + '.' + ext), tmp = dest + '.tmp';
-  await fs.promises.writeFile(tmp, buf); clear(id); await fs.promises.rename(tmp, dest); return dest;
+function back(id) { const b = path.join(backDir(), safeId(id)); for (const e of EXTS) if (isFile(b + '.' + e)) return b + '.' + e; return null; }
+function clear(id, isBack = false) { const b = path.join(isBack ? backDir() : dir(), safeId(id)); for (const e of EXTS) { try { fs.unlinkSync(b + '.' + e); } catch {} } }
+async function save(id, buf, ext, isBack = false) {
+  const folder = isBack ? backDir() : dir(); fs.mkdirSync(folder, { recursive: true });
+  const dest = path.join(folder, safeId(id) + '.' + ext), tmp = dest + '.tmp';
+  await fs.promises.writeFile(tmp, buf); clear(id, isBack); await fs.promises.rename(tmp, dest); return dest;
 }
 
 // a thumbnail, fetched once into the cache (three at a time); null when it couldn't be fetched
@@ -64,7 +66,7 @@ async function options(game) {
     for (const { p, i, t } of got) { if (!t) continue; const k = 'sg' + i; keys[k] = { url: p.url }; list.push({ key: k, thumb: o.fileUrl(t), source: 'steamgriddb', label: p.styleName ? `SteamGridDB · ${p.styleName}` : 'SteamGridDB', sub: p.author ? 'by ' + p.author : '' }); }
   }
   last.set(id, keys);
-  return { list, sgdb, current: !!mine };
+  return { list, sgdb, current: !!mine, back: !!back(id) };
 }
 // use one of the last options (by key) as the game's cover
 async function use(id, key) {
@@ -82,4 +84,10 @@ async function own(id, file) {
   return save(String(id), await fs.promises.readFile(file), ext);
 }
 
-module.exports = { init, cover, options, use, own, reset: id => clear(String(id)) };
+async function ownBack(id, file) {
+  const ext = String(path.extname(file)).slice(1).toLowerCase().replace('jpeg', 'jpg'); if (!EXTS.includes(ext)) throw new Error('Pick a JPG, PNG or WebP picture.');
+  const st = await fs.promises.stat(file); if (st.size > 25e6) throw new Error('That picture is too big (over 25 MB).');
+  return save(String(id), await fs.promises.readFile(file), ext, true);
+}
+
+module.exports = { init, cover, back, options, use, own, ownBack, reset: id => clear(String(id)), resetBack: id => clear(String(id), true) };

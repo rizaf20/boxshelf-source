@@ -57,6 +57,7 @@ window.BS_WHATSNEW = [
         ["Original Xbox", "A new Xbox shelf, for xemu."],
         ["Xbox One", "A new shelf for Azimuth game folders. Boxshelf finds each folder's azimuth.exe and starts it directly, without an emulator."],
         ["+ Add to…", "Put any game on any shelf (it stays on its own too), on one of My shelves or in Favourites, from the quick menu or Details. It starts just as it does from its own shelf. A game you added by hand can still move to another shelf in Settings → Custom games."],
+        ["PC back covers", "Choose a separate back-cover image for a PC game from its Box art picker. Steam and SteamGridDB automatic front covers continue to work independently."],
         ["Fixed", "Your theme, sound and music stay chosen after a restart. Automatic shelves keep their rule. PCSX2's sign-in is found in a moved or translated Documents folder. A Steam library on a sleeping drive no longer freezes start-up. Video previews wait 5 seconds."]
       ] },
       { h: "Windows", items: [

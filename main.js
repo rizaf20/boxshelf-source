@@ -756,7 +756,7 @@ async function buildLibrary() {
   if (steamGiven && !isMainSteam(steamGiven) && steamMain === undefined) { steamMain = null; try { const p = await findSteam(); if (p && steamRoot(p) && isMainSteam(steamRoot(p))) { steamMain = p; log('Steam: the folder set is a library; using Steam\'s own folder for the list of libraries'); } } catch {} }
   if (steamUp && cfg.steam.enabled && cfg.steam.path) {
     // Steam's own cached art first, then anything Boxshelf fetched from the Steam store for games Steam has no cover for
-    pcShelf = (await scanSteamSafe(cfg.steam.path, { hideTools: cfg.steam.hideTools !== false, log, mainPath: steamMain || '' })).map(g => { const l = steamart.local(g.appid); return { ...g, ...(ownTitle(g.id) ? { title: ownTitle(g.id), fileTitle: g.title } : {}), info: steamart.gameInfo(g.appid), art: { front: fileUrl(pccovers.cover(g.id) || g.art.front || l.front), hero: fileUrl(g.art.hero || l.hero) } }; }); // (beta.5: a cover chosen in the picker wins)
+    pcShelf = (await scanSteamSafe(cfg.steam.path, { hideTools: cfg.steam.hideTools !== false, log, mainPath: steamMain || '' })).map(g => { const l = steamart.local(g.appid); return { ...g, ...(ownTitle(g.id) ? { title: ownTitle(g.id), fileTitle: g.title } : {}), info: steamart.gameInfo(g.appid), art: { front: fileUrl(pccovers.cover(g.id) || g.art.front || l.front), back: fileUrl(pccovers.back(g.id)), hero: fileUrl(g.art.hero || l.hero) } }; }); // (beta.5: a cover chosen in the picker wins)
   }
   // (beta.4) Epic's installs join the PC shelf; Quiver Launcher's apps and games added by hand get the Custom shelf. They
   // are PC games with a source (kind 'steam' keeps every shelf feature); covers come from the Steam app their title
@@ -772,7 +772,7 @@ async function buildLibrary() {
   // (Steam art by title only for Epic's store games: a recomp or a program added by hand often shares its name with an
   // unrelated Steam game, "Quarantine" got a puzzle game's cover; they keep the made-up case)
   const pcGame = g => { const sid = STORE_SRC.has(g.source) ? pcgames.steamIdOf(g.title) : null, l = sid ? steamart.local(sid) : {};
-    return { kind: 'steam', source: g.source, id: g.id, title: g.title, ...(sid ? { info: steamart.gameInfo(sid) } : {}), art: { front: fileUrl(pccovers.cover(g.id) || l.front), hero: fileUrl(l.hero), icon: g.icon || undefined } }; };
+    return { kind: 'steam', source: g.source, id: g.id, title: g.title, ...(sid ? { info: steamart.gameInfo(sid) } : {}), art: { front: fileUrl(pccovers.cover(g.id) || l.front), back: fileUrl(pccovers.back(g.id)), hero: fileUrl(l.hero), icon: g.icon || undefined } }; };
   // (beta.10) a game added by hand can be moved to the PC shelf (Settings → Custom games → the game → Shelf); (beta.14) or
   // to any console's shelf (one is made for it if that console has none); an id that isn't a console stays on Custom
   const { toPc, onCustom } = pcgames.placeCustom(shelves, mine, CONSOLES, pcGame);
@@ -1981,8 +1981,8 @@ let pcCoverT = 0; // (beta.9: one shelf refresh for a run of covers, not one per
 // (beta.12) a chosen cover gets a new address each time (the same file name used to give the same bsfile:// address, so
 // a second pick showed the old picture from the cache and the shelf saw nothing new), and the shelf's rescan is a fresh
 // one: a scan already running may have read the covers before this one was saved
-const pcCoverBump = id => { const f = id && pccovers.cover(id); if (f) artBump(f); };
-const pcCoverChanged = id => { pcCoverBump(id); scanCfg = null; clearTimeout(pcCoverT); pcCoverT = setTimeout(() => { if (alive()) win.webContents.send('library:changed', { pcCover: 1 }); }, 700); };
+const pcCoverBump = id => { if (id) [pccovers.cover(id), pccovers.back(id)].filter(Boolean).forEach(artBump); };
+const pcCoverChanged = (id, oldFiles = []) => { pcCoverBump(id); oldFiles.filter(Boolean).forEach(artBump); scanCfg = null; clearTimeout(pcCoverT); pcCoverT = setTimeout(() => { if (alive()) win.webContents.send('library:changed', { pcCover: 1 }); }, 700); };
 // (beta.9) the games that never get an automatic cover (Quiver's, and programs added by hand or from Playnite: their
 // names often match an unrelated game) and have none chosen yet: the batch cover finder's list
 handle('pccover:missing', () => pcgames.all().filter(g => (g.source === 'custom' || g.source === 'quiver') && !pccovers.cover(g.id)).map(g => ({ id: g.id, title: g.title, source: g.source })));
@@ -1996,6 +1996,13 @@ handle('pccover:own', async ({ id }) => {
   await pccovers.own(id, r.filePaths[0]); pcCoverChanged(id); return { ok: true };
 });
 handle('pccover:reset', ({ id }) => { pcGameOf(id); pccovers.reset(id); pcCoverChanged(); return { ok: true }; });
+handle('pccover:back-own', async ({ id }) => {
+  pcGameOf(id);
+  const r = await openDialog(alive() ? win : undefined, { title: 'Choose a back cover', properties: ['openFile'], filters: [{ name: 'Pictures', extensions: ['jpg', 'jpeg', 'png', 'webp'] }] });
+  if (r.canceled || !r.filePaths || !r.filePaths[0]) return { ok: false, canceled: true };
+  await pccovers.ownBack(id, r.filePaths[0]); pcCoverChanged(id); return { ok: true };
+});
+handle('pccover:back-reset', ({ id }) => { pcGameOf(id); const old = pccovers.back(id); pccovers.resetBack(id); pcCoverChanged(id, [old]); return { ok: true }; });
 // (beta.5) Details → Rename: a console game by its console and file (it must be one the scanner could find), a PC game by
 // id. An empty name (or the file's own) goes back to the scanned one. The shelf rescans; art and manuals look it up by
 // the new name from then on
