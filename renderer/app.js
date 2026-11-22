@@ -78,6 +78,7 @@ function argsPreview(tpl,rom){return (tpl||"").replace(/\{rom\}/g,rom||"")}
 // Shuffle, attract mode and letter jumps all skip them; the scan itself stays whole (lastLib) for the Settings list.
 let lastLib=null;
 function hiddenSet(){const h=cfgInfo&&cfgInfo.config.ui.hidden;return new Set(Array.isArray(h)?h.map(String):[])}
+function hiddenShelfTabs(){const h=cfgInfo&&cfgInfo.config.ui.hiddenShelves;return new Set(Array.isArray(h)?h.map(String):[])}
 function prepare(list){
   const hid=hiddenSet();
   const out=addsShelves(list).map(s0=>{
@@ -254,6 +255,7 @@ function buildHome(){
     let sh=COLS.get(id);if(!sh){sh={id,kind:"home",col:true,name:"",games:[],items:[],hasEmulator:false};COLS.set(id,sh)}
     sh.auto=false;sh.name=String(c.name||"Collection");sh.items=its;sh.games=its;cols.push(sh)}
   let list=allShelves.filter(s=>s!==HOME);
+  const hiddenTabs=hiddenShelfTabs();list=list.filter(s=>s.kind!=="console"||!hiddenTabs.has(String(s.id)));
   // Android: a console set up without any games yet (RetroArch alone can enable a dozen) gets no tab of its own; if that
   // would leave nothing at all, they stay so the shelf can still say what to do next
   if(ON_ANDROID){const full=list.filter(hasGames);if(full.length)list=full}
@@ -5166,6 +5168,7 @@ window.Shelf={
     games:()=>(cur()?cur().items.filter(isGame):[]).map(g=>({id:g.id,year:yearOf(g),genres:genresOf(g)})),shelves:()=>shelves.map(s=>({id:s.id,name:s.name,col:!!s.col,ids:(s.items||[]).filter(isGame).map(g=>g.id),last:((s.items||[])[(s.items||[]).length-1]||{}).id||null,random:(s.items||[]).some(i=>i&&i.kind==="random")}))},
   // (beta.7) Settings changed your collections: their shelves are made again (the one you're on stays, if it still has games)
   previewStop:()=>{if(PV){pvStop();pvBackStop()}},setCollections:list=>{if(!cfgInfo||!Array.isArray(list))return;cfgInfo.config.ui.collections=list;reHome()},
+  setHiddenShelves:list=>{if(!cfgInfo||!Array.isArray(list))return;cfgInfo.config.ui.hiddenShelves=list.map(String);reHome()},
   // (beta.14) Settings → My shelves → Automatic shelves switched (ui.autoShelves), and the genres / consoles a shelf can fill itself from
   setAutoShelves:o=>{if(!cfgInfo||!o||typeof o!=="object")return;cfgInfo.config.ui.autoShelves=Object.assign({},o);reHome()},autoChoices:()=>autoChoices(),
   homeButton:()=>{if(qm.open){qmClose();return "closed"}qmOpen();return qm.open?"opened":"busy"},quickMenuOpen:()=>!!qm.open, // the Thor's Home key while Boxshelf is the Home app

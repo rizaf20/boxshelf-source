@@ -103,6 +103,11 @@ const shown=r=>!r.when||r.when();
 
 /* ---------- the sections ---------- */
 function consoleList(){return info&&info.consoles||[]}
+const tabRowMemo=new Map();
+function hiddenShelfTabs(){const h=gp("ui.hiddenShelves");return Array.isArray(h)?h.map(String):[]}
+function consoleTabRows(){return consoleList().map(c=>{let r=tabRowMemo.get(c.id);if(!r){r={t:"toggle",label:c.name,info:`Off hides the ${c.name} tab only. Its games stay available on Home, My shelves, in search and in the museum.`,
+    get:()=>!hiddenShelfTabs().includes(c.id),set:v=>{const h=hiddenShelfTabs(),i=h.indexOf(c.id);if(v&&i>=0)h.splice(i,1);if(!v&&i<0)h.push(c.id);cfg.ui.hiddenShelves=h},
+    live:()=>shelf("setHiddenShelves",hiddenShelfTabs()),ns:true,keys:`console tab hide shelf ${c.name.toLowerCase()}`};tabRowMemo.set(c.id,r)}r.label=c.name;return r})}
 // the Consoles grid's order: your shelves first, hidden ones after (dimmed); every use of the grid's position goes
 // through this, so a tile and its index always agree
 function tileList(){const L=consoleList();return [...L.filter(c=>sysCfg(c.id).enabled!==false),...L.filter(c=>sysCfg(c.id).enabled===false)]}
@@ -278,6 +283,7 @@ function build(){
     ]),
   ]},
   {g:"Boxshelf",id:"shelf",name:"Shelf",ic:"shelf",lead:"How the shelf behaves: console order, shuffle and the idle show.",rows:[
+    M("Console tabs","shelf-tabs","Choose which console tabs appear along the top of the shelf.","Hiding a tab doesn't hide its games: they remain available on Home, My shelves, search and in the museum.",[{t:"dyn",fn:consoleTabRows}],{keys:"console tabs hide tidy organize shelves",sub:()=>{const n=hiddenShelfTabs().length;return n?{text:`${n} hidden`}:null}}),
     A("Console order","Reorder","The order of the consoles along the top. Home always comes first.",()=>openSub({kind:"order"}),{keys:"shelf order arrange tabs move"}),
     /* (beta.11, Windows and Linux) the first-run tour again (tour.js): Settings closes, then it starts on the shelf */
     ...(window.bsPlatform&&bsPlatform.os==="android"?[]:[A("Show the tour","Start","A one-minute look at the basics: consoles, Details, Inspect, the quick menu, the Art Studio and where to add games.",()=>{Promise.resolve(close()).then(()=>setTimeout(()=>{if(window.BS_TOUR)BS_TOUR.start()},450))},{keys:"tour tutorial intro help guide basics how learn"})]),
