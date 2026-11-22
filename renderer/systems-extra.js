@@ -39,6 +39,7 @@
       wonderswan: S('wonderswan', { ...cardboard, hue: 190, ratio: 0.83, depth: 0.2, caseColor: '#eef1f4', caseSide: '#cfd5db', spineInk: '#1f3d4f', band: { bg: '#1f7fa8', fg: '#ffffff', label: 'WONDERSWAN' }, spineBand: { bg: '#1f7fa8', fg: '#ffffff', label: 'WS' }, tint: ['#14506b', '#04121a'], glow: '#8ad8ff' }),
       // (beta.14) the original Xbox: a black DVD keep case under its green XBOX band
       xbox: S('xbox', { rc: 0.04, re: 0.22, hue: 110, ratio: 0.711, depth: 0.104, edge: 0.022, caseColor: '#141614', caseSide: '#0a0c0a', spineInk: '#e8f2e4', band: { bg: '#2f8f1f', fg: '#ffffff', label: 'XBOX' }, spineBand: { bg: '#2f8f1f', fg: '#ffffff', label: 'XBOX' }, tint: ['#24611a', '#071405'], glow: '#9be86b' }),
+      xone: S('xone', { rc: 0.04, re: 0.22, hue: 120, ratio: 0.711, depth: 0.104, edge: 0.022, caseColor: '#151719', caseSide: '#0a0c0e', spineInk: '#e8f2e4', band: { bg: '#107c10', fg: '#ffffff', label: 'XBOX ONE' }, spineBand: { bg: '#107c10', fg: '#ffffff', label: 'XBOX ONE' }, tint: ['#24611a', '#071405'], glow: '#9be86b' }),
       dos: S('dos', { ...cardboard, hue: 120, ratio: 0.78, depth: 0.26, caseColor: '#141614', caseSide: '#0a0b0a', band: { bg: '#0a0b0a', fg: '#7dff8a', label: 'MS-DOS' }, spineBand: { bg: '#0a0b0a', fg: '#7dff8a', label: 'DOS' }, tint: ['#1f5a24', '#071408'], glow: '#9dffa8' })
     },
     wordmarks: {
@@ -48,7 +49,7 @@
       megadrive: ['Genesis', 'Home console'], mastersystem: ['Master System', 'Home console'], gamegear: ['Game Gear', 'Handheld'],
       pcengine: ['TurboGrafx-16', 'Home console'], neogeo: ['Neo Geo', 'Arcade'], arcade: ['Arcade', 'Coin-op'],
       segacd: ['Sega CD', 'Home console'], sega32x: ['32X', 'Home console'], atari2600: ['Atari 2600', 'Home console'], atarilynx: ['Lynx', 'Handheld'],
-      wonderswan: ['WonderSwan', 'Handheld'], dos: ['DOS', 'PC classics'], xbox: ['Xbox', 'Home console']
+      wonderswan: ['WonderSwan', 'Handheld'], dos: ['DOS', 'PC classics'], xbox: ['Xbox', 'Home console'], xone: ['Xbox One', 'Home console']
     },
     media: {
       nes: { kind: 'cart', size: 0.5, drive: 'slot' }, snes: { kind: 'cart', size: 0.5, drive: 'slot' }, n64: { kind: 'cart', size: 0.5, drive: 'slot' },
@@ -58,7 +59,7 @@
       arcade: { kind: 'cart', size: 0.5, drive: 'slot' },
       psx: { kind: 'disc', size: 0.845, drive: 'top' }, dreamcast: { kind: 'disc', size: 0.845, drive: 'top' }, saturn: { kind: 'disc', size: 0.833, drive: 'top' },
       segacd: { kind: 'disc', size: 0.833, drive: 'top' }, sega32x: { kind: 'cart', size: 0.5, drive: 'slot' }, atari2600: { kind: 'cart', size: 0.5, drive: 'slot' },
-      xbox: { kind: 'disc', size: 0.889, drive: 'tray' }, /* (beta.14) discs at real size: 120 mm in its case (Inspect / museum: inspect3d.js CASES) */
+      xbox: { kind: 'disc', size: 0.889, drive: 'tray' }, xone: { kind: 'disc', size: 0.889, drive: 'tray' }, /* (beta.14) discs at real size: 120 mm in their cases (Inspect / museum: inspect3d.js CASES) */
       atarilynx: { kind: 'cart', size: 0.42, drive: 'slot' }, wonderswan: { kind: 'cart', size: 0.42, drive: 'slot' }, dos: { kind: 'cart', form: 'floppy', size: 0.5, drive: 'slot' } /* (beta.11) a 3.5" floppy, not a CD: handled like a cartridge (no spin), drawn as a floppy */
     }
   };

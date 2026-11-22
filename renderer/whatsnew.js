@@ -55,6 +55,7 @@ window.BS_WHATSNEW = [
         ["Find a logo", "Every console's Customize tab can search Wikimedia Commons for free logos, or the web: a logo you save to Downloads becomes the shelf's logo."],
         ["Hidden games in Find", "A hidden game still turns up in Find, dimmed. Choose it to unhide it."],
         ["Original Xbox", "A new Xbox shelf, for xemu."],
+        ["Xbox One", "A new shelf for Azimuth game folders. Boxshelf finds each folder's azimuth.exe and starts it directly, without an emulator."],
         ["+ Add to…", "Put any game on any shelf (it stays on its own too), on one of My shelves or in Favourites, from the quick menu or Details. It starts just as it does from its own shelf. A game you added by hand can still move to another shelf in Settings → Custom games."],
         ["Fixed", "Your theme, sound and music stay chosen after a restart. Automatic shelves keep their rule. PCSX2's sign-in is found in a moved or translated Documents folder. A Steam library on a sleeping drive no longer freezes start-up. Video previews wait 5 seconds."]
       ] },

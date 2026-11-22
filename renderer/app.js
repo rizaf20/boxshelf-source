@@ -1025,13 +1025,18 @@ function infoRows(g){
   if(i.players)rows.push(["Players",i.players+(i.coop==="true"?" (co-op)":"")]);
   if(i.esrb)rows.push(["Rating",i.esrb.replace(/ - .*$/,"")]);
   if(i.rating)rows.push(["Community score",i.rating+" / 5"]);
-  rows.push(["Region",g.region||"Unknown"],["File",(g.ext||"").toUpperCase()+" · "+fmtSize(g.sizeBytes)+(g.discs&&g.discs.length>1?" · "+g.discs.length+" discs":"")],["Emulator",s.emulatorName]);
+  rows.push(["Region",g.region||"Unknown"]);
+  if(g.directGame)rows.push(["Game folder",String(g.file||"").replace(/[\\/][^\\/]*$/,"")],["Launch",`${s.runnerName||"Direct"} · no emulator`]);
+  else if(g.directExe)rows.push(["Program",g.file],["Launch","Direct executable"]);
+  else rows.push(["File",(g.ext||"").toUpperCase()+" · "+fmtSize(g.sizeBytes)+(g.discs&&g.discs.length>1?" · "+g.discs.length+" discs":"")],["Emulator",s.emulatorName]);
   return rows;
 }
 function fmtRelease(r,y){if(r){const d=new Date(r);if(!isNaN(d))return d.toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"})}return y||""}
 function descFor(g){
   const s=cur();
+  if(g.directGame)return `Runs this game's azimuth.exe directly through ${s.runnerName||"its game runtime"}, without an emulator.`;
   if((g.kind==="rom"||g.kind==="steam")&&g.info&&g.info.overview)return g.info.overview;
+  if(g.directExe)return "Starts this game's executable directly, without the console emulator.";
   if(g.kind==="random")return `Spins through your games and lands on one at random. ${showPad()?padWord("L3")+" (press the left stick)":"R"} does the same from anywhere.`;
   if(g.kind==="setup"&&g.addGames)return "Puts more games on the Custom shelf: several programs at once, a whole folder of games, or your Playnite library.";
   if(g.kind==="setup")return `No games found for ${s.name} yet. Opens its page in Settings, where you can pick the folder your games are in.`;
@@ -1085,21 +1090,22 @@ function fillDetails(){
   if(!DV2&&g.kind==="rom"&&i.genres&&i.genres.includes(";")){const box=document.createElement("div");box.className="wide";const dt=document.createElement("dt"),dd=document.createElement("dd");dt.textContent="Genres";dd.textContent=i.genres.replace(/;/g,", ");box.append(dt,dd);grid.append(box)}
   {const si=$("dSecInfo");if(si)si.hidden=!grid.childElementCount}
   let cmd="";
-  if(g.kind==="rom")cmd=`${quote(gameEmu(g)||s.emulator||s.emulatorName)} ${argsPreview(s.gameArgs,g.file)}`;
+  if(g.directExe)cmd=`${quote(g.file)} ${argsPreview(g.args||"","")}`;
+  else if(g.kind==="rom")cmd=`${quote(gameEmu(g)||s.emulator||s.emulatorName)} ${argsPreview(s.gameArgs,g.file)}`;
   else if(g.kind==="emulator")cmd=quote(s.emulator||"");
   else if(g.kind==="steam")cmd=g.source&&g.source!=="steam"?(PC_EXT[g.source]||g.title):`steam://rungameid/${g.appid}`;
   else if(g.kind==="app")cmd=quote(g.path);
   $("dCmd").textContent=cmd;$("dCmd").hidden=!cmd;
-  const how=$("dHow");if(how){how.textContent=g.kind==="rom"?`Plays in ${s.emulatorName}${s.bootOnLaunch&&!s.useIpl&&((themes[s.id]||{}).boot||s.insertAnim===false)?" after the boot "+((themes[s.id]||{}).boot?"video":"intro"):""}. Close the emulator to come back here.`:"";how.hidden=g.kind!=="rom"}
+  const how=$("dHow");if(how){how.textContent=g.directExe?"Starts its own program directly; no console emulator is needed.":g.kind==="rom"?`Plays in ${s.emulatorName}${s.bootOnLaunch&&!s.useIpl&&((themes[s.id]||{}).boot||s.insertAnim===false)?" after the boot "+((themes[s.id]||{}).boot?"video":"intro"):""}. Close the emulator to come back here.`:"";how.hidden=g.kind!=="rom"}
   raDetails(g);
   $("dPlay").textContent=g.kind==="rom"||g.kind==="steam"?"Play":"Open";
   $("dInspect").hidden=g.kind!=="rom";$("dManual").hidden=g.kind!=="rom";$("dManual").querySelector("span").textContent=hasManual(g)?"Read manual":"Read booklet"; /* (beta.7: an icon button: only its label changes) */
-  $("dEmu").hidden=!(g.kind==="rom"&&s.hasEmulator);$("dEmu").textContent=`Open ${s.emulatorName||"emulator"}`;
+  $("dEmu").hidden=!(g.kind==="rom"&&!g.directExe&&s.hasEmulator);$("dEmu").textContent=`Open ${s.emulatorName||"emulator"}`;
   {const pc=g.kind==="steam"&&!!api.pcCoverOptions,b=$("dBoxArt"),p=$("dBoxArtPc");if(b)b.hidden=!(g.kind==="rom"&&api.artStudio&&g.file);if(p)p.hidden=!pc;} /* (beta.9) a PC game's Box art sits beside Play (it has no manual or Inspect), not in More */{const b=$("dRename");if(b)b.hidden=!(api.renameGame&&((g.kind==="rom"&&g.file)||g.kind==="steam"));} /* (beta.5: PC games too, through the cover picker) */
   {const b=$("dCols");if(b)b.hidden=!isGame(g)||g.kind==="app";}
   {const b=$("dAddTo");if(b)b.hidden=!addCan(g);if(b&&!b.hidden){const c=$("dCols");if(c)c.hidden=true}} /* (beta.14) Add to… (Windows / Linux, not in Kid mode); it covers My shelves, so the older My shelves button steps aside */
   {const b=$("dChooseManual");if(b){b.hidden=!(g.kind==="rom"&&api.manualStudio&&g.file);b.textContent=hasManual(g)?"Choose manual…":"Find a manual…";b.title=!hasManual(g)&&g.manualMiss?`Boxshelf looked online on ${new Date(g.manualMiss).toLocaleDateString()} and found no manual for this game. Search or add one here.`:""}}
-  {const b=$("dGameEmu");if(b){const own=g.kind==="rom"?gameEmu(g):"";b.hidden=!(g.kind==="rom"&&api.gameEmulator);b.textContent=own?(emuLabel(own).length>16?emuLabel(own).slice(0,15)+"…":emuLabel(own)):"Emulator";b.title=own?`Runs in ${own} (just this game). Press to change.`:`Runs in the shelf's ${s.emulatorName||"emulator"}. Press to pick a different build for just this game.`;b.classList.toggle("own",!!own)}}
+  {const b=$("dGameEmu");if(b){const own=g.kind==="rom"&&!g.directExe?gameEmu(g):"";b.hidden=!(g.kind==="rom"&&!g.directExe&&api.gameEmulator);b.textContent=own?(emuLabel(own).length>16?emuLabel(own).slice(0,15)+"…":emuLabel(own)):"Emulator";b.title=own?`Runs in ${own} (just this game). Press to change.`:`Runs in the shelf's ${s.emulatorName||"emulator"}. Press to pick a different build for just this game.`;b.classList.toggle("own",!!own)}}
   if(DV2)dvFill(g); // (beta.12) the sections only the Windows Details has: Your play, Status, Favourite, Your copy, the placard
   renderHints(); // Y's prompt follows this game's trailer / achievements row (updateInfo drew the bar before this fill)
   pvSchedule(); // (beta.7) its video preview, after a rest
@@ -1464,7 +1470,7 @@ function closeDetails(silent){if(mode!=="details")return;dMenuClose(true);ASND.o
 // (the shelf's emulator, as before), or null for Back.
 let bp=null,nextBuild=null;
 // (Settings → Switch 2 → Build set to one build (askBuild false): Play starts in it, or in the game's own Details choice)
-const needsBuild=(g,s)=>!!(g&&s&&g.kind==="rom"&&s.id==="sw2"&&api.sw2Builds&&!(nextBuild&&nextBuild.id===g.id)&&!(cfgInfo&&((cfgInfo.config.systems||{}).sw2||{}).askBuild===false));
+const needsBuild=(g,s)=>!!(g&&s&&g.kind==="rom"&&!g.directExe&&s.id==="sw2"&&api.sw2Builds&&!(nextBuild&&nextBuild.id===g.id)&&!(cfgInfo&&((cfgInfo.config.systems||{}).sw2||{}).askBuild===false));
 async function pickBuild(g){
   let r=null;try{r=await api.sw2Builds(g.file)}catch{}
   if(!r||!r.builds||!r.builds.length)return "";
@@ -1600,12 +1606,11 @@ function play(){
   const raw=rawItem();if(!raw||sysBusy()||(mode!=="browse"&&mode!=="details"))return;closeDetails(true);
   if(raw.kind==="setup"){const s=shelfFor(raw)||cur();play_("panel");Setup.open({page:raw.addGames?"addgames":s?s.id:"consoles"});return}
   if(raw.kind==="random"){if(raw.pick)playPick(raw);else shuffle();return}
-  if(cur()===HOME){playPick({pick:{shelf:shelves.indexOf(shelfFor(raw)),game:raw}});return}
   const g=raw;
   const s=cur().col||shelfFor(g)!==cur()?(g._sh||shelfFor(g)):cur(); // (beta.10) on a collection shelf: the game's own console (build picker, boot video and slide, its name). (beta.14) A game added to another shelf (+ Add to…) too
   // Switch 2: which build first (before the boot slide starts); Back on the list leaves you on the shelf
   if(needsBuild(g,s)){pickBuild(g).then(exe=>{if(exe==null)return;nextBuild={id:g.id,exe};play()});return}
-  if(g.kind==="rom"&&biosWarn(s))return; // (beta.14) a BIOS this console can't start without is missing: a card first (Play anyway goes on)
+  if(g.kind==="rom"&&!g.directExe&&biosWarn(s))return; // (beta.14) a BIOS this console can't start without is missing: a card first (Play anyway goes on)
   const boot=g.kind==="rom"&&s.bootOnLaunch&&!s.useIpl,vid=boot&&!!(themes[s.id]||{}).boot;
   // your boot video (Customize) plays first when this console has one and its switch is on; otherwise the boot slide
   // covers the emulator starting (it stays until the game's window is up, then fades to black), and with the slide off
@@ -2093,7 +2098,7 @@ function runSlide(s,g,done,hideAfter){
   $("bsCover").src=front?thumb(front,900):"";
   $("bsBoot").textContent=`Booting ${(WORDMARKS[s.id]||[s.name])[0]}`;
   const t=themes[s.id]||{};renderWordmark($("bsWord"),s.id,s.name,"bs-word ");$("bsWord").hidden=!!t.logo;$("bsLogo").hidden=!t.logo;if(t.logo)cleanLogo(t.logo).then(r=>{$("bsLogo").src=r.url});
-  $("bsTitle").textContent=g.title;$("bsEmu").textContent=s.emulatorName?`Starting in ${s.emulatorName}`:"";
+  $("bsTitle").textContent=g.title;$("bsEmu").textContent="Starting game";
   const bar=$("bsBar").querySelector("i");bar.style.animation="none";void bar.offsetWidth;bar.style.animation="";
   el.classList.add("on");el.setAttribute("aria-hidden","false");void el.offsetWidth;el.classList.add("go");
   lastGoAt=performance.now();play_("go");setTimeout(()=>play_("boot"),700);rumble(.4,.25,90);
@@ -2123,7 +2128,7 @@ function runInsert(s,g,done,hideAfter){
   const slot=m.drive==="slot"&&!drive&&!useModel;el.classList.toggle("slotload",slot);
   // the other consoles' devices (front slot, tray, handheld hatch): original generic shapes tinted from the shelf
   const deck=!drive&&!useModel?DECK[m.drive]||null:null;Object.values(DECK).forEach(c=>el.classList.toggle(c,c===deck));
-  $("insEmu").textContent=`Starting ${s.emulatorName}`;$("insTitle").textContent=g.title;
+  $("insEmu").textContent="Starting game";$("insTitle").textContent=g.title;
   el.classList.add("on");el.setAttribute("aria-hidden","false");
   if(top){
     // tint the cube from the shelf's colours and measure where the well lands on screen so the disc flies exactly into it
@@ -2227,15 +2232,18 @@ async function launchNow(g,underInsert){padAtSteam=false; /* (beta.12) only the 
     // (beta.4) PC games that aren't Steam's: Epic's are handed to its launcher (like Steam's: Back returns to the shelf);
     // Quiver's and the ones added by hand are started by Boxshelf (like an app: the Home menu, and Back waits for them)
     // (beta.7) Ubisoft Connect, the EA app and the Xbox app too (PC_EXT): handed over the same way
-    if(g.kind==="steam"&&PC_EXT[g.source]){const L=PC_EXT[g.source];showLaunch("Starting through "+L,g.title,L);await wait(650);if(mode!=="launch"||!launchCtx||launchCtx.g!==g)return;const r=await api.launchPc(g.id);if(api.historyTouch)api.historyTouch(g.id).catch(()=>{});if(r&&r.watching){watchStarted(g,r,"the "+L);return} /* (beta.12: Seamless play watches it) */
+    if(g.directExe){runningKind="app";showLaunch("Starting",g.title,quote(g.file));await wait(650);if(mode!=="launch"||!launchCtx||launchCtx.g!==g)return;const r=await api.launchPc(g.id);sendHomeMeta(g);if(underInsert){clearTimeout(insertT);insProgress(r&&r.cover)}if(r&&r.cover){const bar=$("launch").querySelector(".l-bar i");bar.style.animation="none";void bar.offsetWidth;bar.style.animation=`load ${Math.min(r.cover,8)}s cubic-bezier(.5,0,.2,1) forwards`}}
+    else if(g.kind==="steam"&&PC_EXT[g.source]){const L=PC_EXT[g.source];showLaunch("Starting through "+L,g.title,L);await wait(650);if(mode!=="launch"||!launchCtx||launchCtx.g!==g)return;const r=await api.launchPc(g.id);if(api.historyTouch)api.historyTouch(g.id).catch(()=>{});if(r&&r.watching){watchStarted(g,r,"the "+L);return} /* (beta.12: Seamless play watches it) */
       clearTimeout(launchTimer);launchTimer=setTimeout(()=>note(["Running through the "+L+". Press ",{b:btnWord("back")}," or ",{b:"Esc"}," to return to the shelf."]),1800);return}
-    if(g.kind==="steam"&&g.source&&g.source!=="steam"){runningKind="app";showLaunch(g.source==="quiver"?"Starting from Quiver":g.source==="gog"?"Starting from GOG":"Starting",g.title,g.title);await wait(650);if(mode!=="launch"||!launchCtx||launchCtx.g!==g)return;const r=await api.launchPc(g.id);sendHomeMeta(g);if(api.historyTouch)api.historyTouch(g.id).catch(()=>{});
+    else if(g.kind==="steam"&&g.source&&g.source!=="steam"){runningKind="app";showLaunch(g.source==="quiver"?"Starting from Quiver":g.source==="gog"?"Starting from GOG":"Starting",g.title,g.title);await wait(650);if(mode!=="launch"||!launchCtx||launchCtx.g!==g)return;const r=await api.launchPc(g.id);sendHomeMeta(g);if(api.historyTouch)api.historyTouch(g.id).catch(()=>{});
       if(r&&r.cover){const bar=$("launch").querySelector(".l-bar i");bar.style.animation="none";void bar.offsetWidth;bar.style.animation=`load ${Math.min(r.cover,8)}s cubic-bezier(.5,0,.2,1) forwards`}}
     else if(g.kind==="steam"){showLaunch("Starting through Steam",g.title,`steam://rungameid/${g.appid}`);await wait(650);if(mode!=="launch"||!launchCtx||launchCtx.g!==g)return; /* backed out during the fade */padAtSteam=inputMode==="pad"||!!window.__padAtSteamTest;const r=await api.launchSteam(g.appid);if(api.historyTouch)api.historyTouch(g.id).catch(()=>{});if(r&&r.watching){watchStarted(g,r,"Steam");return} /* (beta.12: Seamless play watches it) */
       clearTimeout(launchTimer);launchTimer=setTimeout(()=>note(["Running through Steam. Press ",{b:btnWord("back")}," or ",{b:"Esc"}," to return to the shelf."]),1800);return}
     else if(g.kind==="app"){showLaunch("Opening app",g.title,quote(g.path));await wait(650);const r=await api.launchApp(g.appId,g.link);sendHomeMeta(g);if(r&&r.cover){const bar=$("launch").querySelector(".l-bar i");bar.style.animation="none";void bar.offsetWidth;bar.style.animation=`load ${Math.min(r.cover,8)}s cubic-bezier(.5,0,.2,1) forwards`}}
     else if(g.kind==="emulator"){showLaunch(`Opening ${s.emulatorName}`,"Emulator settings",quote(s.emulator));await wait(650);await api.launchEmulator(s.id)}
-    else{showLaunch(`Starting ${s.emulatorName}`,g.title,`${quote(emu||s.emulator)} ${argsPreview(s.gameArgs,g.file)}`);await wait(ANDROID?(underInsert?Math.max(260,insertSeatAt-performance.now()):260):underInsert?Math.max(650,insertSeatAt-performance.now()):650); /* (beta.12, Android: the emulator covers the screen as it starts, so the slide isn't waited on: about 0.4 s sooner into every game) */launchCloud=!!(g.romm&&g.romm.cloud);let r;try{r=await (emu?api.launchGame(s.id,g.file,emu):api.launchGame(s.id,g.file))}finally{launchCloud=false}sendHomeMeta(g); /* (beta.12) launchCloud: a RomM game downloading first, B stops it */if(underInsert){clearTimeout(insertT);insProgress(r&&r.cover)} /* the insert screen stays, with a progress line, until the game's window is up */if(r&&r.cover){const bar=$("launch").querySelector(".l-bar i");bar.style.animation="none";void bar.offsetWidth;bar.style.animation=`load ${r.cover}s linear forwards`}}
+    else if(g.directGame){showLaunch("Starting game",g.title,quote(g.file));await wait(ANDROID?(underInsert?Math.max(260,insertSeatAt-performance.now()):260):underInsert?Math.max(650,insertSeatAt-performance.now()):650);
+      const r=await api.launchGame(s.id,g.file);sendHomeMeta(g);if(underInsert){clearTimeout(insertT);insProgress(r&&r.cover)}if(r&&r.cover){const bar=$("launch").querySelector(".l-bar i");bar.style.animation="none";void bar.offsetWidth;bar.style.animation=`load ${r.cover}s linear forwards`}}
+    else{showLaunch("Starting game",g.title,`${quote(emu||s.emulator)} ${argsPreview(s.gameArgs,g.file)}`);await wait(ANDROID?(underInsert?Math.max(260,insertSeatAt-performance.now()):260):underInsert?Math.max(650,insertSeatAt-performance.now()):650); /* (beta.12, Android: the emulator covers the screen as it starts, so the slide isn't waited on: about 0.4 s sooner into every game) */launchCloud=!!(g.romm&&g.romm.cloud);let r;try{r=await (emu?api.launchGame(s.id,g.file,emu):api.launchGame(s.id,g.file))}finally{launchCloud=false}sendHomeMeta(g); /* (beta.12) launchCloud: a RomM game downloading first, B stops it */if(underInsert){clearTimeout(insertT);insProgress(r&&r.cover)} /* the insert screen stays, with a progress line, until the game's window is up */if(r&&r.cover){const bar=$("launch").querySelector(".l-bar i");bar.style.animation="none";void bar.offsetWidth;bar.style.animation=`load ${r.cover}s linear forwards`}}
     if(runningKind==="error")return;
     /* (beta.12) Linux / Steam Deck has no Home menu (the Steam button is Steam's): it says the hold that closes the game (main/linuxpad.js) */
     clearTimeout(launchTimer);launchTimer=setTimeout(()=>note(window.bsPlatform&&bsPlatform.os==="linux"?`Playing · to come back here, hold ${padWord("view")} + ${padWord("menu")} for a moment`:cfgInfo&&cfgInfo.config.ui.homeMenu===false?"Playing · close the game to come back here":`Playing · press ${padWord("guide")} for the Home menu`),1800);
@@ -2305,7 +2313,7 @@ api.onExited(async info=>{uiCrumb("Back from the game");if(info&&info.watched)st
   if(info&&info.quick){const e=info.emulatorName||"The emulator";clearTimeout(insertT);clearTimeout(launchTimer);hideInsert();
     /* (beta.12, Linux) a Flatpak emulator and a game on an SD card / USB drive: Flatpak keeps it out until allowed */
     if(info.flatpakFix){note([`${e} closed right away${info.code?` (code ${info.code})`:""}. `,{br:1},`${e} is a Flatpak, and Flatpak apps can't open games on an SD card or USB drive until they're allowed. In a terminal (Desktop Mode), run once: `,{br:1},{b:info.flatpakFix},{br:1},"Press ",{b:btnWord("back")}," or ",{b:"Esc"}," to go back."],true);runningKind="error";return}
-    note([`${e} closed right away${info.code?` (code ${info.code})`:""}. `,{br:1},`Open ${e} on its own to check its setup: a missing BIOS, keys or firmware is the usual cause. `,{br:1},"Press ",{b:btnWord("back")}," or ",{b:"Esc"}," to go back."],true);runningKind="error";return}
+    note(info.directGame?[`${e} closed right away${info.code?` (code ${info.code})`:""}. `,{br:1},"Check that the game folder is complete and its Azimuth runtime is working. ",{br:1},"Press ",{b:btnWord("back")}," or ",{b:"Esc"}," to go back."]:[`${e} closed right away${info.code?` (code ${info.code})`:""}. `,{br:1},`Open ${e} on its own to check its setup: a missing BIOS, keys or firmware is the usual cause. `,{br:1},"Press ",{b:btnWord("back")}," or ",{b:"Esc"}," to go back."],true);runningKind="error";return}
   document.body.classList.remove("aside");clearTimeout(returnUndo);prepReturn();endLaunch();returnAt=performance.now();
   // the window has just been shown again: let it paint the shelf a few times behind the cover, then reveal it
   await shelfImagesReady(700);await Promise.race([frames(3),wait(300)]);await wait(120);
@@ -2347,7 +2355,7 @@ function runBoot(s,done){
 function endBoot(cancel){if(mode!=="boot")return;bootRun++;clearTimeout(bootT);const b=$("boot"),v=$("bootVideo");b.classList.remove("on","intro");b.setAttribute("aria-hidden","true");v.onended=v.onerror=null;try{v.pause();v.removeAttribute("src");v.load()}catch(e){} /* drop the video: nothing left to decode or play */const d=bootDone;bootDone=null;mode=(!cancel&&d)?"launch":"browse";if(cancel)musLaunch=null;if(!cancel&&d)setTimeout(d,200)}
 
 /* ---------- customize (logos + boot videos on disk) ---------- */
-const THEME_IDS=[["gc","GameCube",true],["wii","Wii",true],["wiiu","Wii U",true],["sw","Switch",true],...(ANDROID?[]:[["sw2","Switch 2",true]]),["psp","PSP",true],["ps2","PS2",true],["ps3","PS3",true],["ps4","PS4",true],["ps5","PS5",true],["x360","Xbox 360",true],["n3ds","3DS",true],["pc","PC",false],["media","Media",false]];
+const THEME_IDS=[["gc","GameCube",true],["wii","Wii",true],["wiiu","Wii U",true],["sw","Switch",true],...(ANDROID?[]:[["sw2","Switch 2",true]]),["psp","PSP",true],["ps2","PS2",true],["ps3","PS3",true],["ps4","PS4",true],["ps5","PS5",true],["xbox","Xbox",true],["xone","Xbox One",true],["x360","Xbox 360",true],["n3ds","3DS",true],["pc","PC",false],["media","Media",false]];
 async function reloadThemes(){themes=await api.themes().catch(()=>({}))||{};applyLogo();preloadModel();if(mode==="customize")renderCustomize();if(Object.values(themes).some(t=>t&&t.heavy&&t.heavy.length))optimizeModels()} /* a newly added heavy model gets its light copy without a restart */
 // Program icons (apps, "Open <emulator>") become covers once the icon image has loaded
 // Covers for emulators and apps made from their icons: drawn one at a time in quiet moments once the shelf is on screen
@@ -2380,14 +2388,14 @@ async function raInit(){
 function raHas(s){return !!s&&((RA.on&&RA.systems.includes(s.id))||achLocal(s))}
 async function raShelfLoad(){
   const busy=raShelfLoad.busy||(raShelfLoad.busy=new Set()),s=cur();if(!raHas(s)||RA.shelf[s.id]||busy.has(s.id))return; // busy: the quick menu, a shelf switch and refresh() can all ask at once; one request is enough
-  busy.add(s.id);try{RA.shelf[s.id]=await api.raShelf(s.id,s.games.filter(g=>g.kind==="rom").map(g=>g.title))||{};if(cur()===s)updateInfo()}catch(e){console.warn("RA shelf",e)}finally{busy.delete(s.id)}
+  busy.add(s.id);try{RA.shelf[s.id]=await api.raShelf(s.id,s.games.filter(g=>g.kind==="rom"&&!g.directExe).map(g=>g.title))||{};if(cur()===s)updateInfo()}catch(e){console.warn("RA shelf",e)}finally{busy.delete(s.id)}
 }
-function raFor(g){const s=shelfFor(g);if(!raHas(s)||!g||g.kind!=="rom")return null;const m=RA.shelf[s.id];return m?m[g.title]||null:null}
+function raFor(g){const s=shelfFor(g);if(!raHas(s)||!g||g.kind!=="rom"||g.directExe)return null;const m=RA.shelf[s.id];return m?m[g.title]||null:null}
 // The row is there for every game on a shelf RetroAchievements covers: loading, the error (with Try again), no set, or progress
 function raRow(state,title,sub,btn){const box=$("dAch");box.hidden=false;box.dataset.state=state;$("dAchTitle").textContent=title;$("dAchSub").textContent=sub;
   const b=$("dAchBtn");b.hidden=!btn;if(btn)b.textContent=btn;if(state!=="ok"){$("dRing").style.setProperty("--p",0);$("dRingTxt").textContent=state==="load"?"…":state==="err"?"!":"–"}if(mode==="details"){renderHints();if(DV2)dvAchPaint(curGame())}}
 async function raDetails(g,force){
-  const box=$("dAch");box.hidden=true;const s=shelfFor(g);if(!raHas(s)||!g||g.kind!=="rom")return;
+  const box=$("dAch");box.hidden=true;const s=shelfFor(g);if(!raHas(s)||!g||g.kind!=="rom"||g.directExe)return;
   const key=s.id+"|"+g.title;let p=force?undefined:RA.game.get(key);
   if(p===undefined){raRow("load","Achievements",`Loading from ${achSrc(s)}…`);
     try{p=await api.raProgress(s.id,g.title,!!force,g.titleId,g.file);RA.game.set(key,p||false)}catch(e){console.warn("RA",e);if(curGame()===g)raRow("err","Achievements didn't load",e&&e.message||`${achSrc(s)} didn't answer.`,"Try again");return}}
@@ -4890,7 +4898,7 @@ async function chooseGameEmu(g){if(!g||g.kind!=="rom"||!api.gameEmulator)return;
 // (beta.5) Details → Rename: a console or PC game's own name (Settings' Rename page, so a controller gets the on-screen
 // keyboard); main applies it everywhere it reads games, so box art and manuals are looked up by it too
 (function(){const c=$("dActEnd");if(!c||$("dRename"))return;const b=document.createElement("button");b.className="btn";b.type="button";b.id="dRename";b.textContent="Rename";b.title="Give this game the name you want on your shelf";
-  b.addEventListener("click",()=>{const g=curGame();if(!g||!api.renameGame||!(g.kind==="rom"||g.kind==="steam"))return;const s=g._sh||shelfFor(g);const ref=g.kind==="rom"?{systemId:s.id,file:g.file}:{id:g.id};
+  b.addEventListener("click",()=>{const g=curGame();if(!g||!api.renameGame||!(g.kind==="rom"||g.kind==="steam"))return;const s=g._sh||shelfFor(g);const ref=g.directExe||g.kind==="steam"?{id:g.id}:{systemId:s.id,file:g.file};
     closeDetails(true);play_("panel");Setup.open({page:"rename",ref,title:g.title,fileTitle:g.fileTitle||""})});c.before(b)})();
 // the Details panel's "Choose manual…" button (Manual Studio): every manual found for this game side by side, in Settings
 // → Art & manuals (the same picker as the box art's); B there goes up to the console's games, then the Art page

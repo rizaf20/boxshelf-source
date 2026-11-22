@@ -147,6 +147,15 @@ const CONSOLES = [
     coverSeconds: 6
   },
   {
+    // Xbox One games translated by Azimuth are game folders, not ROMs: each folder supplies its own azimuth.exe.
+    id: 'xone', name: 'Xbox One', runnerName: 'Azimuth', requiresEmulator: false, directGameExe: true,
+    exeNames: [], emulatorFolders: [],
+    romFolderNames: ['xbox one', 'xboxone', 'xone', 'azimuth'],
+    extensions: [], gameFile: 'azimuth.exe', gameFolderMarker: true,
+    hint: 'game folders containing azimuth.exe; each one starts directly',
+    gameArgs: '', emulatorArgs: '', coverSeconds: 8, windowsOnly: true
+  },
+  {
     id: 'n3ds', name: '3DS', emulatorName: 'Azahar',
     exeNames: ['azahar.exe', 'azahar-qt.exe', 'lime3ds.exe', 'lime3ds-gui.exe', 'citra-qt.exe'],
     emulatorFolders: ['{app}\\Azahar', '{app}\\azahar', '%ProgramFiles%\\Azahar', '%LOCALAPPDATA%\\Programs\\Azahar', '%LOCALAPPDATA%\\Azahar', '%APPDATA%\\Azahar', '{app}\\Citra', '%LOCALAPPDATA%\\Citra\\nightly', '%LOCALAPPDATA%\\Citra\\canary', '{app}\\Lime3DS'],
@@ -268,6 +277,7 @@ const LINUX_EMU = {
   dreamcast: ['flycast', 'org.flycast.Flycast', 're:^flycast.*\\.appimage$'],
 };
 function forLinux() {
+  for (let i = CONSOLES.length - 1; i >= 0; i--) if (CONSOLES[i].windowsOnly) CONSOLES.splice(i, 1);
   for (const c of CONSOLES) {
     const own = LINUX_EMU[c.id] || [];
     if (c.retro) { const first = c.exeNames[0] !== 'retroarch.exe'; c.exeNames = first ? [...own, ...LINUX_RA] : [...LINUX_RA, ...own]; c.emulatorFolders = [...LINUX_DIRS, ...LINUX_RA_DIRS]; }

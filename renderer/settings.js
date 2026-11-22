@@ -107,15 +107,15 @@ function consoleList(){return info&&info.consoles||[]}
 // through this, so a tile and its index always agree
 function tileList(){const L=consoleList();return [...L.filter(c=>sysCfg(c.id).enabled!==false),...L.filter(c=>sysCfg(c.id).enabled===false)]}
 function sysCfg(id){cfg.systems=cfg.systems||{};const c=cfg.systems[id]||(cfg.systems[id]={enabled:true,emulator:"",gameArgs:"",emulatorArgs:"",romDirs:[],artDir:"",bootOnLaunch:true});if(!Array.isArray(c.romDirs))c.romDirs=[];return c}
-function conState(c){const s=sysCfg(c.id);if(s.enabled===false)return "off";return s.emulator&&s.romDirs.length?"ok":s.emulator||s.romDirs.length?"warn":""}
+function conState(c){const s=sysCfg(c.id),needsEmulator=c.requiresEmulator!==false;if(s.enabled===false)return "off";return s.romDirs.length&&(!needsEmulator||s.emulator)?"ok":s.emulator||s.romDirs.length||!needsEmulator?"warn":""}
 // (games counted on the last scan: "13 games"; until a scan has run, the folders)
 const gameCount=id=>{const m=shelf("gameCounts");return m&&typeof m[id]==="number"?m[id]:null};
 function conStatus(c){const s=sysCfg(c.id),d=conState(c),n=s.romDirs.length,g=gameCount(c.id);
-  return d==="off"?"Shelf hidden":d==="ok"?(g!=null?`Ready · ${g} game${g===1?"":"s"}`:`Ready · ${n} folder${n===1?"":"s"}`):d==="warn"?(s.emulator?"Add a games folder":`Needs ${c.emulatorName||"its emulator"}`):"Not set up"}
+  return d==="off"?"Shelf hidden":d==="ok"?(g!=null?`Ready · ${g} game${g===1?"":"s"}`:`Ready · ${n} folder${n===1?"":"s"}`):d==="warn"?(c.requiresEmulator===false?"Add a games folder":s.emulator?"Add a games folder":`Needs ${c.emulatorName||"its emulator"}`):"Not set up"}
 // a program shown by its name ("Dolphin.exe" → "Dolphin"); the whole path stays in the row's explanation
 const progName=p=>String(p||"").split(/[\\/]/).pop().replace(/\.exe$/i,"");
 // (beta.10) a console tile names the emulator actually picked when it's another known one (Switch: Citron, Ryujinx), else its usual one
-const emuShownName=c=>{const n=progName(((cfg&&cfg.systems&&cfg.systems[c.id])||{}).emulator).toLowerCase();return ({citron:"Citron",ryujinx:"Ryujinx"})[n]||c.emulatorName||""};
+const emuShownName=c=>{const n=progName(((cfg&&cfg.systems&&cfg.systems[c.id])||{}).emulator).toLowerCase();return ({citron:"Citron",ryujinx:"Ryujinx"})[n]||c.emulatorName||c.runnerName||""};
 const folderName=p=>{const L=String(p||"").split(/[\\/]/).filter(Boolean);return L.slice(-2).join(" › ")||String(p||"")};
 function consolesReady(){const on=consoleList().filter(c=>sysCfg(c.id).enabled!==false);return `${on.filter(c=>conState(c)==="ok").length}/${on.length}`}
 /* (beta.14) Melody is the Instrument's Song mode now, and Music box one of its instruments: "melody" = songs are playing */
@@ -199,7 +199,7 @@ function build(){
       ()=>{if(typeof MORE!=="undefined"&&MORE&&MORE["lib-custom"]){route("custom");return}goSecId("custom");focus="page";rowI=0;play("open");render()},{ns:true,when:()=>SECTIONS.some(s=>s.id==="custom")||(typeof MORE!=="undefined"&&!!MORE&&!!MORE["lib-custom"]), /* (beta.14: Settings in tabs, Custom games is Library's page lib-custom: route opens it) */keys:"playnite decomp decomps recomp recomps port ports other launcher custom quiver",sub:()=>({text:"Playnite, decomps, ports → Custom games"})}),
   ]},
   // (beta.4) the Custom shelf: Quiver Launcher's apps (recomps, ports) and any program added by hand
-  {g:"Games",id:"custom",name:"Custom games",ic:"pc",lead:"Everything that isn't a console or store game: decomps and recomps, PC ports, games from Playnite or Quiver Launcher, and any other program. Each gets a case on the Custom shelf.",rows:[{t:"dyn",fn:customRows}]},
+  {g:"Games",id:"custom",name:"Custom games",ic:"pc",lead:"Everything that isn't a console or store game: decomps and recomps, PC ports, games from Playnite or Quiver Launcher, and any other program. Keep them on Custom or assign one to an enabled console's shelf.",rows:[{t:"dyn",fn:customRows}]},
   {g:"Games",id:"apps",name:"Apps",ic:"apps",dot:()=>Object.values(cfg.apps||{}).some(a=>a&&a.enabled!==false&&a.path)?"ok":null,lead:"Stremio and Nuvio, launched from the Media shelf.",rows:appRows},
   {g:"Look & sound",id:"display",name:"Display",ic:"display",lead:"How the shelf looks from the couch.",rows:[
     C("Interface size","ui.uiScale",[[1,"Standard"],[1.15,"Large"],[1.3,"Extra large"]],1,"Bigger text and buttons for a TV across the room.",{more:"Large suits most 55\" and bigger TVs at 2–3 m. Extra large for very far seating.",live:()=>fit(),keys:"zoom text big small scale"}),
@@ -487,7 +487,7 @@ function regroup(S){
       take("shelf","My shelves"),take("shelf","Console order"),take("art","Hidden games")];
     const mo=more("consoles",[take("consoles","Find emulators again"),take("consoles","RocketLauncher"),take("consoles","Start games through RocketLauncher"),take("consoles","Front end RocketLauncher is told"),take("display","Seamless play"),...rest("consoles")]);
     out.push({g:"",id:"consoles",name:"Library",ic:"games",alias:["pc","custom","apps","library"],badge:(secOf("consoles")||{}).badge,dot:()=>attnList().some(x=>!x.tip)?"warn":null,
-      lead:"Your consoles, their emulators and your games: where Boxshelf finds them and what goes on the shelves.",rows:[...rows,mo].filter(Boolean)})}
+      lead:"Your consoles and games: where Boxshelf finds them and what goes on the shelves.",rows:[...rows,mo].filter(Boolean)})}
   // ---- Look ----
   {const rows=[...all("display","Theme","Keep themes moving while you scroll","Custom themes","Interface size","Clock","Startup animation","Bottom screen","Text size"),
       H("Motion & effects"),...all("perf","Performance","Reduce motion","Box shine")];
@@ -549,7 +549,8 @@ function regroup(S){
 /* (beta.14) Library's Needs attention: what's keeping a game off the shelf or a feature from working, each with its fix */
 function attnList(){const L=[];
   for(const c of consoleList()){const s=sysCfg(c.id);if(s.enabled===false||conState(c)!=="warn")continue;
-    L.push({label:s.emulator?`${c.name} has no games folder`:`${c.name} has no emulator`,sub:s.emulator?"Add the folder its games are in":"Choose the emulator that plays it",btn:"Fix",run:()=>openConsole(c.id)})}
+    const direct=c.requiresEmulator===false;
+    L.push({label:direct||s.emulator?`${c.name} has no games folder`:`${c.name} has no emulator`,sub:direct||s.emulator?"Add the folder its games are in":"Choose the emulator that plays it",btn:"Fix",run:()=>openConsole(c.id)})}
   for(const c of emuAllList()){const st=esGet(c.id).st,b=st&&st.bios;if(!b||b.ok||b.need==="opt")continue; /* (beta.14) a BIOS it can't start without */
     L.push({label:`${c.name}: ${st.name||"its emulator"} needs a BIOS`,sub:"Copied from your own console into its BIOS folder",btn:"Show me",run:()=>openConsole(c.id)})}
   const nc=artNoCover();if(nc>0)L.push({label:`${nc} game${nc===1?" has":"s have"} no cover`,sub:"Find covers in Art Studio, console by console",btn:"Open",run:()=>{goSecId("art");focus="page";rowI=0;openSub({kind:"more",id:"art-studio"})}});
@@ -815,11 +816,13 @@ async function rlFind(){const my=openId;RL.busy=true;bump();let exe="";try{exe=a
   try{RL.sys=await api.rocketSystems(exe)}catch{}if(isOpen)bump()}
 // one console's page
 function conPages(id){
-  const def=consoleList().find(c=>c.id===id)||{id,name:id,emulatorName:"Emulator",exeNames:["emulator.exe"]},c=sysCfg(id),p=`systems.${id}.`,emu=def.emulatorName||"Emulator",exe=(def.exeNames||["emulator.exe"])[0];
+  const def=consoleList().find(c=>c.id===id)||{id,name:id,emulatorName:"Emulator",exeNames:["emulator.exe"]},c=sysCfg(id),p=`systems.${id}.`,needsEmulator=def.requiresEmulator!==false,emu=def.emulatorName||def.runnerName||"Direct launch",exe=(def.exeNames||["emulator.exe"])[0];
   // the shelf on / off first, with where it stands ("Ready · 13 games", "Needs Dolphin"); then the emulator and games
   // folders by name (the whole path is in the explanation on the right)
   const rows=[T("Show this shelf",p+"enabled",true,"Turn a console off without losing its settings.",{rescan:true,keys:"hide shelf console off",sub:()=>{const st=conState(def);return {text:conStatus(def),cls:st==="ok"?"ok":st==="warn"?"warn":""}}}),
-    F("Emulator",p+"emulator","file",id==="sw"?"The Switch emulator this shelf uses: Eden, Citron or Ryujinx. One game can use a different one: Details → Emulator.":`The ${emu} program this shelf uses.`,{rescan:true,want:"file",short:v=>{const b=progName(v).toLowerCase();return ({citron:"Citron",ryujinx:"Ryujinx"})[b]||((def.exeNames||[]).some(x=>progName(x).toLowerCase()===b)?emu:progName(v))} /* the usual program: its proper name (PPSSPP, not PPSSPPWindows64); (beta.10) the Switch's other emulators by their own names */,filters:[{name:emu,extensions:["exe"]}],pickTitle:`Find ${exe}`,ph:`Point to ${exe}`,more:()=>c.emulator?c.emulator:"Found automatically when it's in your Boxshelf folder or a usual install place. Find emulators again (Consoles) looks once more."})];
+    ...(needsEmulator?[
+      F("Emulator",p+"emulator","file",id==="sw"?"The Switch emulator this shelf uses: Eden, Citron or Ryujinx. One game can use a different one: Details → Emulator.":`The ${emu} program this shelf uses.`,{rescan:true,want:"file",short:v=>{const b=progName(v).toLowerCase();return ({citron:"Citron",ryujinx:"Ryujinx"})[b]||((def.exeNames||[]).some(x=>progName(x).toLowerCase()===b)?emu:progName(v))} /* the usual program: its proper name (PPSSPP, not PPSSPPWindows64); (beta.10) the Switch's other emulators by their own names */,filters:[{name:emu,extensions:["exe"]}],pickTitle:`Find ${exe}`,ph:`Point to ${exe}`,more:()=>c.emulator?c.emulator:"Found automatically when it's in your Boxshelf folder or a usual install place. Find emulators again (Consoles) looks once more."})
+    ]:[infoRow("Game launcher","",null,{info:`Each game folder is found by ${def.gameFile} and started directly with ${emu}; no emulator or ROM options are used.`})])];
   // Switch 2 (Windows): which Eglantine build Play starts. "Ask each time" (the default) shows the list at Play; a build
   // picked here becomes the shelf's emulator and Play starts in it straight away. A game's own Details → Emulator wins.
   // (beta.3) a page of its own: every build (the list Play shows), Ask each time, and builds or folders kept elsewhere
@@ -830,7 +833,7 @@ function conPages(id){
      sub:()=>(sw2Want(),{text:sw2b==null?"Looking for emulators…":sw2b.length?`${sw2b.length} emulator${sw2b.length===1?"":"s"} · add or remove here`:"None yet · add one here",cls:sw2b&&!sw2b.length?"warn":""})}));
   // (beta.12, Windows) RocketLauncher on: this console's choice above its emulator, the name RocketLauncher knows it by,
   // and whether its games folder is one RocketLauncher uses (else it's sent the game's full path)
-  if(rlOn())rows.splice(1,0,
+  if(rlOn()&&needsEmulator)rows.splice(1,0,
     C("Start games with",p+"viaRocket",[[false,"Emulator"],[true,"RocketLauncher"]],gp("rocket.mode")==="all","RocketLauncher: Play hands the game to RocketLauncher, which brings its fade screen, bezel and pause menu and starts the emulator set up for this system in RocketLauncherUI. Emulator: Boxshelf starts "+emu+" itself, as before.",{keys:"rocketlauncher hyperspin launcher start with"}),
     X("RocketLauncher system name",p+"rocketSystem","The system's name in RocketLauncher, read from its own settings. Change it if yours is named differently.",{ph:rlName(id)||"Looking…",when:()=>rlUse(id),keys:"rocketlauncher system name hyperspin"}),
     infoRow("Games folder for RocketLauncher","",null,{sub:()=>rlFolder(id),when:()=>rlUse(id),info:"RocketLauncher finds a game in its own ROM folders for this system. When this console's games folder is one of them, the game goes by its name (its 7z and multi-disc handling work); otherwise it's sent the game's full path."}));
@@ -842,21 +845,28 @@ function conPages(id){
     // (beta.10) the confirmation is keyed by the folder itself, not its place in the list (removing another one moved it onto this one)
     run:()=>twice("rd:"+id+":"+dir,()=>{const k=c.romDirs.indexOf(dir);if(k>=0)c.romDirs.splice(k,1);if(window.bsPlatform&&bsPlatform.os==="android")rdGone().add(dir);changed({rescan:true});toast("Folder removed from this shelf (nothing was deleted)")},"Press again to remove this folder"),ask:"rd:"+id+":"+dir,sub:()=>pathSub(dir,"dir")}));
   (d&&d.romDirs||[]).filter(x=>!c.romDirs.includes(x)&&!rdGone().has(x)).forEach(x=>rows.push(A("Add the folder found","Add","Boxshelf found games for this console here.",()=>{if(!c.romDirs.includes(x))c.romDirs.push(x);changed({rescan:true})},{sub:()=>({text:x}),ns:true})));
+  rows.push(A("Add executable game","Choose","A Windows .exe recomp or port to put directly on this console shelf. It starts the .exe itself, so this shelf's emulator is not used.",async()=>{
+    const p=await pick({kind:"file",title:`Choose a ${def.name} executable game`,filters:[{name:"Programs",extensions:["exe"]}]});
+    const exe=typeof p==="string"?p:p&&p.path;if(!exe)return;
+    const pc=pcCfg();if(pc.custom.some(g=>String(g.exe||"").toLowerCase()===String(exe).toLowerCase()))return toast("That program is already assigned to a shelf");
+    const title=String(exe).split(/[\\/]/).pop().replace(/\.exe$/i,"").replace(/[_\-.]+/g," ").replace(/\s+/g," ").trim()||"Game";
+    pc.custom.push({id:Date.now().toString(36),title,exe,args:"",shelf:id});c.enabled=true;changed({rescan:true});toast(`Added ${title} to ${def.name}`);
+  },{ns:true,keys:"exe executable recomp port ported pc game add program direct console"}));
   // (beta.7) Set up for me: the emulator set up the way the shelf expects, on a page of its own
-  if(esCan(c))rows.push(M(`Set up ${emu} for me`,"emusetup-"+id,`Controller, the Home menu's hotkeys, one BIOS folder and a graphics preset for ${emu}: backed up first, and Undo puts it back.`,`Boxshelf sets ${emu} up the way the shelf works best. Each switch is one kind of change; your files are backed up first, and Undo puts them back.`,[{t:"dyn",fn:()=>emuSetupRows(id)}],{keys:"setup set up configure configuration automatic easy controller pad hotkeys bios graphics resolution preset",sub:()=>(esGet(id),esSub(id)),ns:true}));
+  if(needsEmulator&&esCan(c))rows.push(M(`Set up ${emu} for me`,"emusetup-"+id,`Controller, the Home menu's hotkeys, one BIOS folder and a graphics preset for ${emu}: backed up first, and Undo puts it back.`,`Boxshelf sets ${emu} up the way the shelf works best. Each switch is one kind of change; your files are backed up first, and Undo puts them back.`,[{t:"dyn",fn:()=>emuSetupRows(id)}],{keys:"setup set up configure configuration automatic easy controller pad hotkeys bios graphics resolution preset",sub:()=>(esGet(id),esSub(id)),ns:true}));
   rows.push(A(c.romDirs.length?"Add another games folder":"Add a games folder","Add",`Another folder to look in for this console's games${def.hint?` (${def.hint})`:def.extensions?` (${def.extensions.slice(0,4).map(e=>"."+e).join(", ")}…)`:""}.` /* def.hint: a console whose games aren't plain files (PS3 / PS4 game folders) says so in systems.js */,async()=>{const r=await pick({kind:"folder",title:`Choose a ${def.name} games folder`});if(r)rdGone().delete(r);if(r&&!c.romDirs.includes(r)){c.romDirs.push(r);changed({rescan:true})}},{keys:"roms games folder"}),
     H("When you press Play"),
     // what the two switches do (app.js play()): your boot video, when this console has one, plays first; otherwise the boot
     // screen (the console's look with the game's cover and a progress line) covers the emulator starting. With the boot
     // screen off and no video, the built-in intro plays instead.
-    T("Boot screen with the game's cover",p+"insertAnim",true,"The console's start-up look with the game's cover and a progress line while the emulator opens.",{keys:"insert animation disc cartridge launch"}),
+    T("Boot screen with the game's cover",p+"insertAnim",true,`The console's start-up look with the game's cover and a progress line while ${needsEmulator?"the emulator opens":"the game starts"}.`,{keys:"insert animation disc cartridge launch"}),
     T("Your boot video before games",p+"bootOnLaunch",true,"Plays the boot video you added for this console (Customize) before the game, instead of the boot screen. Without a video, the built-in intro plays only when the boot screen is off.",{keys:"boot animation intro launch"}));
   // everyday rows above; the emulator's own tools, launch options and this console's startup oddities on one sub-page
   // (Emulator & advanced), so the page fits a TV screen. Built here so both pages share this call's row objects.
-  const adv=[H(emu),
+  const adv=[...(needsEmulator?[H(emu),
     A("Open the emulator on its own","Open","Starts the emulator without a game so you can change its graphics or controls.",async()=>{await save();try{await api.launchEmulator(id)}catch(e){toast(errMsg(e))}},{when:()=>!!c.emulator&&!!api.launchEmulator,ns:true}),
     A("Get "+emu,"Open site",`Opens ${emu}'s official download page.`,()=>openLink(OFFICIAL[id]),{when:()=>!!OFFICIAL[id],ns:true}),
-    X("Emulator options",p+"emulatorArgs","What Boxshelf passes when it opens the emulator on its own.",{ph:"(none)",d:def.emulatorArgs||"",mono:true})];
+    X("Emulator options",p+"emulatorArgs","What Boxshelf passes when it opens the emulator on its own.",{ph:"(none)",d:def.emulatorArgs||"",mono:true})]:[])];
   // the real GameCube startup as a short checklist: the switch says whether your IPL.bin is there; "Add your IPL.bin"
   // shows only while it isn't; its two fine-tunings only while the startup is on
   const iplOk=()=>!!(ipl&&ipl.found&&ipl.found.length);
@@ -869,16 +879,17 @@ function conPages(id){
     T("Start games through Kyty's launcher",p+"viaLauncher",false,"Off: Play starts the game straight away, with the settings you chose in Kyty's launcher (and the KytyJets preset). On: Play opens Kyty's launcher and you start the game there (it can't be told which game to open)."));
   adv.push(H("Launching"),
     S("Longest loading screen",p+"coverSeconds",def.coverSeconds!=null?def.coverSeconds:4,0,30,.5,v=>v===0?"Off":v+" s","The black loading screen hides the emulator's windows while it starts. It lifts as soon as the game is fullscreen; this is only the longest it waits. 0 turns it off."),
-    X("Game launch options",p+"gameArgs","What Boxshelf passes to the emulator when you play. {rom} is the game file.",{d:def.gameArgs,mono:true,more:"Default: "+(def.gameArgs||"(none)")}),
+    ...(needsEmulator?[X("Game launch options",p+"gameArgs","What Boxshelf passes to the emulator when you play. {rom} is the game file.",{d:def.gameArgs,mono:true,more:"Default: "+(def.gameArgs||"(none)")}),
     A("Restore default launch options","Restore","Puts the launch options back to Boxshelf's defaults.",()=>{c.gameArgs=def.gameArgs||"";c.emulatorArgs=def.emulatorArgs||"";changed(null);toast("Launch options back to the defaults")},{ns:true}),
+    ]:[]),
     H("More"),
     F("Own art folder",p+"artDir","folder","A folder with this console's covers, if you keep them separately. Name images after the game file, like Pikmin (USA).png; add -back for the back cover.",{ph:"(uses the art library)",d:"",want:"dir",short:folderName,rescan:true,pickTitle:"Choose a cover art folder",when:()=>!(window.bsPlatform&&bsPlatform.os==="android")})); // Android: art lives in "Boxshelf Art" beside the games, there is no art library
   rows.push(H("More"),
     A("Box art (Art Studio)","Open",`Jumps to ${def.name}'s games in the Art Studio: its shelf style, and every version of any game's art (manuals are a row away).`,()=>{route("artstudio",{systemId:id});render()},{ns:true}),
     A("Customize (3D, logo, boot video)","Open","Its logo, 3D console, controller and disc models and boot video (the Customize screen).",()=>customize(id),{ns:true}),
-    {t:"action",label:"Emulator & advanced",btn:"",open:true,ns:true,info:`Open ${emu} on its own, launch options, the longest loading screen${id==="gc"&&iplCap()?" and the real GameCube startup":""}.`,run:()=>openSub({kind:"conadv",id})});
-  return {main:{g:"Games",id:"console",sys:id,name:def.name,ic:"games",lead:HELP[id]||`${emu} runs ${def.name} games.`,rows},
-    adv:{g:"Games",id:"console",sys:id,name:"Emulator & advanced",lead:`${emu}'s own tools, how Boxshelf starts it, and the rarely-needed settings for ${def.name}.`,rows:adv}};
+    {t:"action",label:needsEmulator?"Emulator & advanced":"Launch & advanced",btn:"",open:true,ns:true,info:`${needsEmulator?`Open ${emu} on its own, launch options,`:`Direct ${emu} game launch,`} the longest loading screen${id==="gc"&&iplCap()?" and the real GameCube startup":""}.`,run:()=>openSub({kind:"conadv",id})});
+  return {main:{g:"Games",id:"console",sys:id,name:def.name,ic:"games",lead:HELP[id]||(needsEmulator?`${emu} runs ${def.name} games.`:`${def.name} game folders run directly through ${emu}.`),rows},
+    adv:{g:"Games",id:"console",sys:id,name:needsEmulator?"Emulator & advanced":"Launch & advanced",lead:needsEmulator?`${emu}'s own tools, how Boxshelf starts it, and the rarely-needed settings for ${def.name}.`:`How Boxshelf starts ${def.name} games, and the rarely-needed settings.`,rows:adv}};
 }
 const consolePage=id=>conPages(id).main,conAdvPage=id=>conPages(id).adv;
 // the console order: A picks a shelf up, up / down moves it, A (or B) puts it down
@@ -926,7 +937,7 @@ function artGetRows(){dlHook();
     L.push(H(""),A("Back to the list","Back","Your consoles and what they still need.",()=>{AG.rep=null;AG.err=null;AG.cov=null;agLoad()},{ns:true}));return L}
   if(!AG.cov){agLoad();return [infoRow("Checking what you have…","")]}
   const sys=AG.cov.filter(c=>c.total>0);
-  if(!sys.length)return [infoRow("No games yet","",{text:"Add a games folder for a console first (Consoles)"})];
+  if(!sys.length)return [infoRow("No games yet","",{text:"Add a console games folder or an executable game from that console's Settings page first."})];
   const hd=gp("ui.artHD")!==false,pl=agPlan(),parts=agParts(sys,pl),chosen=sys.filter(c=>(pl[c.id]||[]).length);
   const L=[H("Consoles",{em:()=>{const p=agPlan();return `${sys.filter(c=>(p[c.id]||[]).length).length} of ${sys.length} picked`}})];
   sys.forEach(c=>{const miss=c.total-c.front,lack=PARTS4.slice(1).some(([k])=>c[k]<c.total),low=hd?PARTS4.reduce((a,[k])=>a+(c[k+"Low"]||0),0):0;
@@ -1073,7 +1084,7 @@ const sw2Row=()=>!!api.sw2Builds&&!(window.bsPlatform&&bsPlatform.os==="android"
 // (beta.4) Settings → Custom games: Quiver Launcher (found where it usually is, or found / chosen once for a portable
 // copy) and the programs added by hand, each named here. pcSt: what main sees ({ quiver: folder, epic: count }), asked
 // for when the page is drawn
-let pcSt=null,pcAsking=false;const customNameRows=new WeakMap();
+let pcSt=null,pcAsking=false;const customNameRows=new WeakMap(),customArgsRows=new WeakMap();
 // (beta.7) a store row's line: "3 installed" / "None installed" once main has counted (null while asking)
 function pcCount(k){if(!pcSt)setTimeout(pcStatus,0);return pcSt&&pcSt[k]!=null?{text:pcSt[k]?`${pcSt[k]} installed`:"None installed"}:null}
 function pcStatus(){if(pcAsking||!api.pcStatus)return;pcAsking=true;Promise.resolve(api.pcStatus()).then(r=>{pcSt=r||{};pcAsking=false;bump()}).catch(()=>{pcSt={};pcAsking=false;bump()})}
@@ -1081,18 +1092,37 @@ function pcStatus(){if(pcAsking||!api.pcStatus)return;pcAsking=true;Promise.reso
 const COV={n:null,loading:false,busy:false};
 function covLoad(force){if(!api.pcCoverMissing||COV.loading||(COV.n!=null&&!force))return;COV.loading=true;
   Promise.resolve(api.pcCoverMissing()).then(L=>{COV.n=Array.isArray(L)?L.length:0}).catch(()=>{COV.n=0}).finally(()=>{COV.loading=false;bump()})}
-/* (beta.14) the shelves a game added by hand can go on: Custom, PC, then every console (the ones with games first) */
-function customShelfOpts(){const L=consoleList().filter(c=>c&&c.id),has=c=>{const s=(cfg.systems||{})[c.id];return !!(s&&s.enabled&&(s.romDirs||[]).length)};
+/* Existing games can stay on Custom or PC; enabled consoles come first when they have ROM folders. */
+function customShelfOpts(current){const L=consoleList().filter(c=>c&&c.id&&(sysCfg(c.id).enabled!==false||c.id===current)),has=c=>{const s=sysCfg(c.id);return !!(s.enabled&&(s.romDirs||[]).length)};
   return [["custom","Custom"],["pc","PC"],...L.filter(has).map(c=>[c.id,c.name||c.id]),...L.filter(c=>!has(c)).map(c=>[c.id,c.name||c.id])]}
+function addShelfOpts(){return [["custom","Custom"],...consoleList().filter(c=>c&&c.id&&sysCfg(c.id).enabled!==false).map(c=>[c.id,c.name||c.id])]}
+function addShelfValue(){const id=ADD.shelf||"custom";return addShelfOpts().some(o=>o[0]===id)?id:"custom"}
+function shelfName(id){return (addShelfOpts().find(o=>o[0]===id)||["custom","Custom"])[1]}
+function addShelfRow(){return {t:"choice",label:"New games go to",opts:addShelfOpts,info:"Choose where programs you add or import go. Custom is the default; only enabled consoles are listed.",
+  d:"custom",get:addShelfValue,set:v=>{ADD.shelf=addShelfOpts().some(o=>o[0]===v)?v:"custom"},ns:true,keys:"new game shelf custom console"}}
+function customGamePage(c,i){
+  const pageId=`custom-game-${i}-${addSlug(c.id||c.exe)}`,title=c.title||"Game";
+  let nr=customNameRows.get(c);if(!nr){nr=X("Name","","The game's name on the shelf. Program: "+c.exe,{get:()=>c.title||"",set:v=>{c.title=String(v||"").slice(0,120);if(MORE[pageId])MORE[pageId].name=c.title||"Game"},rescan:true,ns:true,keys:"rename custom game name title"});customNameRows.set(c,nr)}
+  let ar=customArgsRows.get(c);if(!ar){ar=X("Launch arguments","",`Optional arguments passed only when starting ${title} directly. Leave blank for no arguments.`,{get:()=>c.args||"",set:v=>{c.args=String(v||"").slice(0,1000)},rescan:true,ns:true,keys:"launch arguments exe direct program args commandline"});customArgsRows.set(c,ar)}
+  const remove=A("Remove game","Remove","Takes it off its shelf. Nothing is deleted.",()=>twice("pcx:"+c.exe+"|"+title,()=>{
+    const k=pcCfg().custom.indexOf(c);if(k>=0)pcCfg().custom.splice(k,1);leaveSub();changed({rescan:true});toast("Removed from the Custom shelf (nothing was deleted)")
+  },"Press again to confirm"),{ns:true,ask:"pcx:"+c.exe+"|"+title});
+  return M(title,pageId,`Edit ${title}'s name, launch arguments and shelf, or remove it.`,`Program: ${c.exe}`,[nr,ar,
+    C("Shelf","",()=>customShelfOpts(c.shelf),"custom","Which shelf this game is on: Custom, PC, or an enabled console's shelf.",
+      {get:()=>c.shelf||"custom",set:v=>{if(!v||v==="custom")delete c.shelf;else c.shelf=v;const name=(customShelfOpts(c.shelf).find(o=>o[0]===(c.shelf||"custom"))||["custom","Custom"])[1];toast(`${c.title||"The game"} is on the ${name} shelf now`)},rescan:true,ns:true,keys:"shelf move pc custom console shelf"}),
+    remove],{keys:`custom game manage edit rename name title launch arguments args shelf ${title}`,sub:()=>({text:folderName(c.exe)})})
+}
+function customGameListRows(){const games=pcCfg().custom;return [H(`Your games (${games.length})`),...(games.length?games.map(customGamePage):[infoRow("No games to manage","",{text:"Add games from the Custom games page."})])]}
 function customRows(){if(!pcSt)setTimeout(pcStatus,0);cfg.pc=cfg.pc||{epic:true,quiver:true,quiverPath:"",custom:[]};const pc=cfg.pc;if(!Array.isArray(pc.custom))pc.custom=[];const rows=[];
   const again=()=>{pcSt=null;changed({rescan:true})};
   // (beta.12) every way in, on this page itself (Playnite used to sit two pages down, inside Add games): what a way finds
   // is listed on the Add games page, which opens once there's something to show
   rows.push({t:"head",text:"Bring games in"});
+  rows.push(addShelfRow());
   if(api.playnitePlan&&addWin()){pnLook();rows.push(A("Import from Playnite (experimental)",pnBtn,PN_INFO,viaAdd(pnRun),{ns:true,keys:"playnite import library launcher experimental",sub:pnSub}))}
-  rows.push(A("Add programs","Choose…","Decomps and recomps (Ship of Harkinian, 2 Ship 2 Harkinian, Zelda 64 Recompiled, a Mario 64 PC port…), PC ports, a game from another launcher: pick its program, or several at once (hold Ctrl or Shift). You check their names before they're added.",
+  rows.push(A("Add programs","Choose…","Decomps and recomps (Ship of Harkinian, 2 Ship 2 Harkinian, Zelda 64 Recompiled, a Mario 64 PC port…), PC ports, a game from another launcher: pick its program, or several at once (hold Ctrl or Shift). Choose its shelf above.",
     viaAdd(addSeveral),{ns:true,keys:"add program programs exe decomp decomps recomp recomps port ports harkinian 2ship sm64 zelda64 one several many bulk multiple game",sub:()=>({text:"Decomps, recomps, ports, any program"})}));
-  rows.push(A("Scan a folder of games","Choose folder…","Point at the folder your PC games, decomps or ports are in (like D:\\Games). Each game folder in it becomes one game, its main program picked for you; you tick which ones to add.",
+  rows.push(A("Scan a folder of games","Choose folder…","Point at the folder your PC games, decomps or ports are in (like D:\\Games). Each game folder in it becomes one game, its main program picked for you; you tick which ones to add to the shelf chosen above.",
     viaAdd(addScan),{ns:true,keys:"scan folder games bulk find decomp recomp port"}));
   rows.push(T("Show Quiver Launcher's games","pc.quiver",true,"Every app Quiver Launcher has installed (recomps, PC ports) gets a case on the Custom shelf. Boxshelf starts them from their own folders; updates stay in Quiver.",{rescan:true,keys:"quiver recomp recomps ports launcher"}));
   rows.push(A("Quiver Launcher",()=>pcSt&&pcSt.quiver?"Found":"Find","Boxshelf looks where Quiver usually keeps its library. A portable copy (unzipped anywhere) is found with Find, or choose its folder.",async()=>{
@@ -1102,9 +1132,11 @@ function customRows(){if(!pcSt)setTimeout(pcStatus,0);cfg.pc=cfg.pc||{epic:true,
     else{const p=await pick({kind:"folder",title:"Choose Quiver Launcher's folder (the one with QuiverLauncher.exe)"}),f=typeof p==="string"?p:p&&p.path;if(f){pc.quiverPath=f;again();toast("Quiver Launcher's folder set")}}},
     {when:()=>pc.quiver!==false,ns:true,keys:"quiver folder find",sub:()=>pcSt==null?{text:"Looking…"}:pcSt.quiver?{text:folderName(pcSt.quiver)}:{text:"Not found yet · press to find it",cls:"warn"}}));
   rows.push({t:"head",text:pc.custom.length?`Your games (${pc.custom.length})`:"Your games"});
+  if(pc.custom.length)rows.push(M("Manage games","custom-game-list","Choose a game to change its name, launch arguments or shelf.","Choose a game to manage it.",[{t:"dyn",fn:customGameListRows}],
+    {keys:"custom games manage edit rename name title launch arguments args shelf remove",sub:()=>({text:`${pc.custom.length} game${pc.custom.length===1?"":"s"} to manage`})}));
   // (beta.7) every way of adding games on one page: several programs, a folder of games, Playnite, one program
   // (the Add games page: where the ways above list what they found, and one program added straight away)
-  rows.push(M("Add games","addgames","Every way in on one page, with what was found to tick, and one program added straight away.","Every way to put games on the Custom shelf. You see what was found before anything is added.",[{t:"dyn",fn:addRows}],
+  rows.push(M("Add games","addgames","Every way in on one page, with what was found to tick, and one program added straight away.","Every way to put games on the shelf you choose (Custom by default). You see what was found before anything is added.",[{t:"dyn",fn:addRows}],
     {keys:"add game games custom several many folder scan playnite import program exe recomp port",sub:()=>({text:ADD.list&&ADD.list.length?`${ADD.list.length} found to tick`:"Found games to tick, or one program"})}));
   // (beta.9) covers for every custom game at once (app.js pcCoverBatch / pcCoverAuto): they never get one automatically
   if(api.pcCoverMissing&&window.Shelf&&Shelf.pcCoverBatch){covLoad();const n=COV.n,S=window.Shelf;
@@ -1114,15 +1146,6 @@ function customRows(){if(!pcSt)setTimeout(pcStatus,0);cfg.pc=cfg.pc||{epic:true,
     rows.push(A("Use the best cover for each","Find","Picks SteamGridDB's top cover for every custom game without one, in one go. A recomp can share its name with another game: look them over, and Undo puts them all back.",
       async()=>{if(!n){toast("Every custom game has a cover already");return}if(COV.busy)return;COV.busy=true;bump();try{await S.pcCoverAuto()}finally{COV.busy=false;covLoad(true)}},{ns:true,keys:"covers best match all automatic steamgriddb",sub:()=>({text:COV.busy?"Finding covers…":"Needs a SteamGridDB key"})}));
     if(S.coverUndoCount&&S.coverUndoCount())rows.push(A(`Undo the ${S.coverUndoCount()} covers just found`,"Undo","Puts back the made-up cases those games had before.",async()=>{await S.pcCoverUndo();covLoad(true)},{ns:true,keys:"undo covers"}));}
-  pc.custom.forEach((c,i)=>{
-    // (beta.5) the name row is kept per game (the text editor finds its row by identity: a new object each draw never edited)
-    let nr=customNameRows.get(c);if(!nr){nr=X(c.title||"Game","",`Its name on the shelf. Program: ${c.exe}`,{get:()=>c.title||"",set:v=>{c.title=String(v||"").slice(0,120);nr.label=c.title||"Game"},rescan:true,ns:true,keys:"rename custom game",sub:()=>({text:folderName(c.exe)})});customNameRows.set(c,nr)}
-    rows.push(nr);
-    // (beta.10) which shelf it sits on: Custom, or the PC shelf beside the store games; (beta.14) or any console's shelf
-    // (main.js makes one for it if that console has no games), with that console's case
-    rows.push(C("Shelf","",customShelfOpts,"custom","Which shelf this game is on: Custom (games you added), PC (with your Steam and store games) or a console's, where it gets that console's case. ◀ ▶ moves it.",
-      {get:()=>c.shelf||"custom",set:v=>{if(!v||v==="custom")delete c.shelf;else c.shelf=v;toast(`${c.title||"The game"} is on the ${(customShelfOpts().find(o=>o[0]===(c.shelf||"custom"))||[0,"Custom"])[1]} shelf now`)},rescan:true,ns:true,keys:"shelf move pc custom console shelf"}));
-    rows.push(A("Remove "+(c.title||"this game"),"Remove","Takes it off its shelf. Nothing is deleted.",()=>twice("pcx:"+c.exe+"|"+(c.title||""),()=>{const k=pc.custom.indexOf(c);if(k>=0)pc.custom.splice(k,1);changed({rescan:true});toast("Removed from the Custom shelf (nothing was deleted)")},"Press again to remove it"),{ns:true,ask:"pcx:"+c.exe+"|"+(c.title||"")}))}); // (beta.10) keyed by the game, not its place in the list
   return rows}
 const sw2Low=x=>String(x||"").toLowerCase();
 function sw2Fixed(){const c=sysCfg("sw2");if(c.askBuild!==false||!c.emulator)return null;return (sw2b||[]).find(b=>sw2Low(b.exe)===sw2Low(c.emulator))||{exe:c.emulator,label:progName(c.emulator)}}
@@ -1397,36 +1420,36 @@ async function trailerSave(v,typed){const s=trailerState;if(!s||!api.trailerSet|
 // isn't added twice); Add puts the ticked ones on the shelf. Playnite (experimental): a summary to tick (PC games,
 // each console's games folders, what's left out and why), Import, and Remove what was imported.
 const pcCfg=()=>{cfg.pc=cfg.pc||{};if(!Array.isArray(cfg.pc.custom))cfg.pc.custom=[];return cfg.pc};
-const ADD={list:null,pn:null,pnOn:{pc:true},pnPick:new Set(),busy:false,rows:null,pnFound:undefined};
+const ADD={list:null,pn:null,pnOn:{pc:true},pnPick:new Set(),busy:false,rows:null,pnFound:undefined,shelf:"custom"};
 const addSlug=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,60)||"game";
 function addReset(){ADD.rows=null;bump()}
 function addFound(items){const have=new Set(pcCfg().custom.map(c=>String(c.exe).toLowerCase()));ADD.pn=null;
   ADD.list=items.map(x=>{const h=have.has(String(x.exe).toLowerCase());return {title:String(x.title||"Game").slice(0,120),exe:String(x.exe),on:!h,have:h}});
   if(!ADD.list.length)toast("No games found there");addReset()}
-function addCommit(){const pc=pcCfg();let n=0;for(const x of (ADD.list||[]).filter(x=>x.on&&!x.have)){if(pc.custom.some(c=>String(c.exe).toLowerCase()===x.exe.toLowerCase()))continue;pc.custom.push({id:Date.now().toString(36)+"-"+n,title:x.title,exe:x.exe,args:""});n++}
-  ADD.list=null;changed({rescan:true});play("open");toast(n?`Added ${n} game${n===1?"":"s"} to the Custom shelf`:"Nothing new to add");addReset()}
+function addCommit(){const pc=pcCfg(),dest=addShelfValue(),fields=dest==="custom"?{}:{shelf:dest};let n=0;for(const x of (ADD.list||[]).filter(x=>x.on&&!x.have)){if(pc.custom.some(c=>String(c.exe).toLowerCase()===x.exe.toLowerCase()))continue;pc.custom.push({id:Date.now().toString(36)+"-"+n,title:x.title,exe:x.exe,args:"",...fields});n++}
+  const label=shelfName(dest);ADD.list=null;changed({rescan:true});play("open");toast(n?`Added ${n} game${n===1?"":"s"} to the ${label} shelf`:"Nothing new to add");addReset()}
 async function addSeveral(){const p=await pick({kind:"file",multi:true,title:"Choose the games' programs (hold Ctrl to pick several)",filters:[{name:"Programs",extensions:["exe"]}]});const L=(Array.isArray(p)?p:p?[p]:[]).map(x=>typeof x==="string"?x:x&&x.path).filter(Boolean);if(!L.length)return;
   const named=await Promise.resolve(api.gameTitles?api.gameTitles(L):L.map(e=>({exe:e,title:e.split(/[\\/]/).pop().replace(/\.exe$/i,"")}))).catch(()=>L.map(e=>({exe:e,title:e.split(/[\\/]/).pop().replace(/\.exe$/i,"")})));addFound(named)}
 async function addScan(){const p=await pick({kind:"folder",title:"Choose the folder your games are in (like D:\\Games)"}),root=typeof p==="string"?p:p&&p.path;if(!root||!api.scanGameFolder)return;
   ADD.busy=true;ADD.list=null;addReset();try{const r=await api.scanGameFolder(root);if(r&&r.error)toast(r.error);addFound((r&&r.games)||[])}catch(e){toast(errMsg(e))}finally{ADD.busy=false;addReset()}}
 async function addOne(){const p=await pick({kind:"file",title:"Choose the game's program",filters:[{name:"Programs",extensions:["exe"]}]}),exe=typeof p==="string"?p:p&&p.path;if(!exe)return;const pc=pcCfg();
-  if(pc.custom.some(c=>String(c.exe).toLowerCase()===String(exe).toLowerCase()))return toast("That game is already on the Custom shelf");
+  if(pc.custom.some(c=>String(c.exe).toLowerCase()===String(exe).toLowerCase()))return toast("That program is already on a shelf");
   const title=String(exe).split(/[\\/]/).pop().replace(/\.[^.]+$/,"").replace(/[_\-.]+/g," ").replace(/\s+/g," ").trim()||"Game";
-  pc.custom.push({id:Date.now().toString(36),title,exe,args:""});changed({rescan:true});toast(`Added ${title}. Rename it in Custom games if you like.`)}
+  const dest=addShelfValue();pc.custom.push({id:Date.now().toString(36),title,exe,args:"",...(dest==="custom"?{}:{shelf:dest})});changed({rescan:true});toast(`Added ${title} to the ${shelfName(dest)} shelf. Rename it in Custom games if you like.`)}
 async function addPlaynite(dir){ADD.busy=true;ADD.list=null;ADD.pn=null;addReset();
   try{const P=await api.playnitePlan(dir);ADD.pn=P;ADD.pnOn={pc:true};Object.keys(P.consoles||{}).forEach(k=>{ADD.pnOn[k]=true});ADD.pnPick=new Set(P.pc.filter(g=>g.there!==false).map(g=>g.key))}
   catch(e){toast(errMsg(e))}finally{ADD.busy=false;addReset()}}
-async function pnImport(){const P=ADD.pn;if(!P||ADD.busy)return;ADD.busy=true;const pc=pcCfg(),have=new Set(pc.custom.map(c=>String(c.exe).toLowerCase())),covers=[];let n=0,dirs=0;
+async function pnImport(){const P=ADD.pn;if(!P||ADD.busy)return;ADD.busy=true;const pc=pcCfg(),dest=addShelfValue(),fields=dest==="custom"?{}:{shelf:dest},have=new Set(pc.custom.map(c=>String(c.exe).toLowerCase())),covers=[];let n=0,dirs=0;
   try{
     if(ADD.pnOn.pc)for(const g of P.pc){if(!ADD.pnPick.has(g.key)||have.has(String(g.exe).toLowerCase()))continue;const id="pn-"+addSlug(g.key).slice(0,40);
-      pc.custom.push({id,title:g.title,exe:g.exe,args:g.args||"",src:"playnite"});have.add(String(g.exe).toLowerCase());n++;if(g.cover)covers.push({id,file:g.cover});
+      pc.custom.push({id,title:g.title,exe:g.exe,args:g.args||"",src:"playnite",...fields});have.add(String(g.exe).toLowerCase());n++;if(g.cover)covers.push({id,file:g.cover});
       if(g.favorite){const fav=cfg.ui.favorites=Array.isArray(cfg.ui.favorites)?cfg.ui.favorites:[];const fid="custom-"+addSlug(id);if(!fav.includes(fid))fav.push(fid)}}
     pc.pnDirs=pc.pnDirs||{};
     for(const [sys,c] of Object.entries(P.consoles||{})){if(!ADD.pnOn[sys]||!cfg.systems[sys])continue;const sc=sysCfg(sys);
       for(const d of c.dirs||[])if(!sc.romDirs.some(x=>x.toLowerCase()===d.toLowerCase())){sc.romDirs.push(d);(pc.pnDirs[sys]=pc.pnDirs[sys]||[]).push(d);dirs++}
       sc.enabled=true;if(!sc.emulator&&c.emulatorDir&&api.emulatorIn){const e=await Promise.resolve(api.emulatorIn(c.emulatorDir,sys)).catch(()=>null);if(e)sc.emulator=e}}
     changed({rescan:true});await save();if(covers.length&&api.gameCovers)api.gameCovers(covers).catch(()=>{});
-    play("open");toast(`From Playnite: ${n} game${n===1?"":"s"} on the Custom shelf${dirs?`, ${dirs} games folder${dirs===1?"":"s"} for your consoles`:""}`);ADD.pn=null}
+    play("open");toast(`From Playnite: ${n} game${n===1?"":"s"} on the ${shelfName(dest)} shelf${dirs?`, ${dirs} games folder${dirs===1?"":"s"} for your consoles`:""}`);ADD.pn=null}
   finally{ADD.busy=false;addReset()}}
 function pnUndo(){const pc=pcCfg(),n=pc.custom.filter(c=>c.src==="playnite").length;pc.custom.splice(0,pc.custom.length,...pc.custom.filter(c=>c.src!=="playnite"));let d=0;
   for(const [sys,L] of Object.entries(pc.pnDirs||{})){if(!cfg.systems[sys])continue;const sc=sysCfg(sys),rm=new Set(L.map(x=>x.toLowerCase())),b=sc.romDirs.length;sc.romDirs=sc.romDirs.filter(x=>!rm.has(x.toLowerCase()));d+=b-sc.romDirs.length}
@@ -1436,7 +1459,7 @@ const addWin=()=>!window.bsPlatform||!bsPlatform.os||bsPlatform.os==="windows"||
 function pnLook(){if(ADD.pnFound===undefined&&api.playniteFind&&addWin()){ADD.pnFound=null;Promise.resolve(api.playniteFind()).then(f=>{ADD.pnFound=f||false;addReset()}).catch(()=>{ADD.pnFound=false;addReset()})}}
 const pnBtn=()=>ADD.pnFound?"Import…":ADD.pnFound===false?"Find…":"…";
 const pnSub=()=>ADD.pnFound?{text:"Found in "+folderName(ADD.pnFound.app)}:ADD.pnFound===false?{text:"Not found · choose its folder"}:{text:"Looking for Playnite…"};
-const PN_INFO="Brings your Playnite library over in one go: games you added there by hand, with their covers, onto the Custom shelf, and your emulated games' folders onto their console's shelf. Steam, Epic, GOG Galaxy and other store games are left out: Boxshelf reads those stores itself. Experimental: it couldn't be tried with every Playnite version, so tell us if something's missing.";
+const PN_INFO="Brings your Playnite library over in one go: games you added there by hand, with their covers, onto the shelf you choose (Custom by default), and your emulated games' folders onto their console's shelf. Steam, Epic, GOG Galaxy and other store games are left out: Boxshelf reads those stores itself. Experimental: it couldn't be tried with every Playnite version, so tell us if something's missing.";
 async function pnRun(){if(ADD.pnFound)return addPlaynite();const p=await pick({kind:"folder",title:"Choose Playnite's folder (the one with Playnite.DesktopApp.exe)"}),d=typeof p==="string"?p:p&&p.path;if(d)return addPlaynite(d)}
 // a way in started from the Custom games page: the Add games page opens as soon as it's looking or has found something
 // (not while the file window is still up, and not at all when nothing was picked)
@@ -1444,18 +1467,19 @@ function viaAdd(fn){return async()=>{const my=openId,l0=ADD.list,p0=ADD.pn,at=se
   const go=()=>{if(!isOpen||openId!==my||(sub&&sub.kind==="more"&&sub.id==="addgames")||at!==secI+"|"+(sub?sub.kind+":"+sub.id:""))return;if(ADD.busy||(ADD.list&&ADD.list!==l0&&ADD.list.length)||(ADD.pn&&ADD.pn!==p0))openSub({kind:"more",id:"addgames"})};
   const t=setInterval(go,150);try{await fn()}finally{clearInterval(t);go()}}}
 function addRows(){if(ADD.rows)return ADD.rows;const R=[],win=addWin();pnLook();
-  R.push(A("Add several programs","Choose…","Pick many games' programs at once (hold Ctrl or Shift in the file window). You check their names before they're added.",addSeveral,{ns:true}),
-    A("Scan a folder","Choose folder…","Point at the folder your games are in (like D:\\Games). Each game folder in it becomes one game, its main program picked for you; you tick which ones to add.",addScan,{ns:true}));
+  R.push(addShelfRow());
+  R.push(A("Add several programs","Choose…","Pick many games' programs at once (hold Ctrl or Shift in the file window). You check their names before they're added to the shelf chosen above.",addSeveral,{ns:true}),
+    A("Scan a folder","Choose folder…","Point at the folder your games are in (like D:\\Games). Each game folder in it becomes one game, its main program picked for you; you tick which ones to add to the shelf chosen above.",addScan,{ns:true}));
   // (beta.12: no search words on this page's copies of the Custom games page's rows, so search lists each once)
   if(api.playnitePlan&&win)R.push(A("Import from Playnite (experimental)",pnBtn,PN_INFO,pnRun,{ns:true,sub:pnSub}));
-  R.push(A("Add one program","Browse…","Any program: a recomp, a PC port, a game from another launcher. It gets a case on the Custom shelf and starts from its own folder.",addOne,{ns:true,keys:"add custom game recomp port program exe one"}));
+  R.push(A("Add one program","Browse…","Any program: a recomp, a PC port, a game from another launcher. It goes to the shelf chosen above and starts from its own folder.",addOne,{ns:true,keys:"add custom game recomp port program exe one"}));
   if(ADD.busy)R.push(infoRow("Looking…","",{text:""}));
   if(ADD.list&&ADD.list.length){const L=ADD.list;R.push(H(`Found ${L.length} game${L.length===1?"":"s"}`,{em:()=>`${L.filter(x=>x.on&&!x.have).length} ticked`}));
-    L.forEach(x=>R.push({t:"toggle",label:x.title,info:x.exe,ns:true,nosave:true,get:()=>x.on&&!x.have,set:v=>{if(!x.have)x.on=!!v},sub:()=>({text:x.have?"Already on the Custom shelf":x.exe.split(/[\\/]/).pop()})}));
-    R.push(A("Add the ticked games",()=>{const n=L.filter(x=>x.on&&!x.have).length;return n?`Add ${n}`:"Add"},"Puts the ticked games on the Custom shelf. Covers are found for them like for any PC game, and each can be renamed or given another cover from its Details.",addCommit,{ns:true}),
+    L.forEach(x=>R.push({t:"toggle",label:x.title,info:x.exe,ns:true,nosave:true,get:()=>x.on&&!x.have,set:v=>{if(!x.have)x.on=!!v},sub:()=>({text:x.have?"Already on a shelf":x.exe.split(/[\\/]/).pop()})}));
+    R.push(A("Add the ticked games",()=>{const n=L.filter(x=>x.on&&!x.have).length;return n?`Add ${n}`:"Add"},"Puts the ticked games on the shelf chosen above. Covers are found for them like for any PC game, and each can be renamed or given another cover from its Details.",addCommit,{ns:true}),
       A("Clear this list","Clear","Forgets this list without adding anything.",()=>{ADD.list=null;addReset()},{ns:true}))}
   if(ADD.pn){const P=ADD.pn,name=id=>((consoleList().find(c=>c.id===id)||{}).name||id);R.push(H("From Playnite",{em:()=>`${P.total} games in Playnite`}));
-    R.push({t:"toggle",label:"PC games",info:"Games you added to Playnite by hand: each gets a case on the Custom shelf with its program, launch options and cover.",ns:true,nosave:true,get:()=>!!ADD.pnOn.pc,set:v=>{ADD.pnOn.pc=!!v;addReset()},sub:()=>({text:`${P.pc.length} game${P.pc.length===1?"":"s"}`})});
+    R.push({t:"toggle",label:"PC games",info:"Games you added to Playnite by hand: each gets a case on the shelf chosen above (Custom by default) with its program, launch options and cover.",ns:true,nosave:true,get:()=>!!ADD.pnOn.pc,set:v=>{ADD.pnOn.pc=!!v;addReset()},sub:()=>({text:`${P.pc.length} game${P.pc.length===1?"":"s"}`})});
     for(const [sys,c] of Object.entries(P.consoles||{}))R.push({t:"toggle",label:`${name(sys)} games`,info:`Adds ${c.dirs.join(", ")} as ${name(sys)} games folders${c.emulatorDir?`, and Playnite's emulator if ${name(sys)} has none yet`:""}.`,ns:true,nosave:true,get:()=>!!ADD.pnOn[sys],set:v=>{ADD.pnOn[sys]=!!v},sub:()=>({text:`${c.count} game${c.count===1?"":"s"} · ${c.dirs.length} folder${c.dirs.length===1?"":"s"}`})});
     const s=P.skipped||{},left=[s.store?`${s.store} store game${s.store===1?"":"s"} (Boxshelf reads those stores itself)`:"",s.hidden?`${s.hidden} hidden`:"",s.link?`${s.link} started by a link`:"",s.nothing?`${s.nothing} with nothing to start`:""].filter(Boolean);
     if(left.length)R.push(infoRow("Left out","",{text:left.join(" · ")}));
@@ -2863,7 +2887,7 @@ function renderInfo(){const r=curRow(),s=sec();E.info.classList.toggle("open",in
   if(!r){E.ih.textContent=s.name;E.ip.textContent=s.lead||"";E.im.textContent="";E.is.innerHTML="";E.it.innerHTML=`<div class="pv">${device==="pad"?"Right or "+btnName("a"):"→ or Enter"} opens this page</div>`;return}
   const R=r.t==="result"?r.row:r,c=r.t==="consoles"?tileList()[ci]:null;
   E.ih.textContent=c?c.name:r.label;
-  E.ip.textContent=c?`Uses ${c.emulatorName||"its emulator"}. ${conStatus(c)}.`:(r.info||"");
+  E.ip.textContent=c?`${c.emulatorName?`Uses ${c.emulatorName}. `:c.runnerName?`Starts each game's executable directly with ${c.runnerName}. `:""}${conStatus(c)}.`:(r.info||"");
   if(c)st=stHtml(conState(c)==="ok"?"ok":conState(c)==="warn"?"warn":"none",conStatus(c));
   E.im.textContent=R&&(typeof R.more==="function"?R.more():R.more)||"";
   if(R&&R.status){const x=svcState(R.status);st=svcChip(R.status);if(x.at&&(x.state==="ok"||x.state==="fail"))meta.push(["",`Checked ${when(x.at)}`])}

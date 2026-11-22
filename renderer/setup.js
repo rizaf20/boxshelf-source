@@ -24,6 +24,7 @@ const CONSOLE_HELP={
   wiiu:"Cemu runs Wii U games. Point to Cemu.exe. Games can be .wua files (Cemu's one-file format, best), .wud / .wux disc images, or extracted game folders (the shelf finds code\\*.rpx and reads the title from meta\\meta.xml). Disc images need your keys.txt set up in Cemu. Install updates and DLC inside Cemu (File → Install game title).",
   ps2:"PCSX2 runs PS2 games. Point to pcsx2-qt.exe. Games are .iso, .chd, .cso or .zso images. PCSX2 needs a PS2 BIOS of its own (set it up in PCSX2 once). RetroAchievements works here too: log in inside PCSX2 (Settings → Achievements).",
   xbox:"xemu runs original Xbox games. Point to xemu.exe; set its BIOS, boot ROM and hard disk image in xemu once. Games are .iso discs in XISO format (a plain Redump .iso won't start: convert it with extract-xiso).",
+  xone:"Xbox One games run through Azimuth, not an emulator. Add the parent folder containing your game folders; each game is found by its azimuth.exe and starts directly.",
   x360:"Xenia runs Xbox 360 games. Point to xenia_canary.exe (or xenia.exe; if you pick Xenia Manager, Boxshelf finds the Canary build inside its Emulators folder). Titles, art and info come from the title ID inside each game, so file names don't have to be exact. Games can be .iso discs, extracted folders with a default.xex inside (the folder name is the title), XBLA .xex files or .zar archives.",
   ps3:"RPCS3 runs PS3 games. Point to rpcs3.exe (install the PS3 system software in RPCS3 first: File → Install Firmware). Disc games are folders (Game\\PS3_GAME\\USRDIR\\EBOOT.BIN); digital games live in RPCS3's dev_hdd0\\game folder — add that as a games folder too. Titles come from each game's PARAM.SFO; installed patches are left off the shelf.",
   n3ds:"Azahar runs 3DS games. Point to azahar.exe. Games are decrypted .3ds / .cci / .cxi images, Azahar's compressed .zcci, or decrypted .cia files (Boxshelf installs a .cia into Azahar the first time you play it). Encrypted copies won't start.",
@@ -55,7 +56,7 @@ function sectionList(){
 }
 
 function dotFor(sec){
-  if(sec.console){const c=cfg.systems[sec.id];if(!c.enabled)return"off";return c.emulator&&c.romDirs.length?"ok":c.emulator||c.romDirs.length?"warn":""}
+  if(sec.console){const c=cfg.systems[sec.id],needsEmulator=sec.console.requiresEmulator!==false;if(!c.enabled)return"off";return c.romDirs.length&&(!needsEmulator||c.emulator)?"ok":c.emulator||c.romDirs.length?"warn":""}
   if(sec.id==="steam")return !cfg.steam.enabled?"off":cfg.steam.path?"ok":"";
   if(sec.id==="media")return Object.values(cfg.apps).some(a=>a.enabled&&a.path)?"ok":"";
   if(sec.id==="pick")return pickItems().some(x=>x.on())?"ok":"";
@@ -416,14 +417,14 @@ function pickInit(){
 }
 // (beta.7) found = its games, or an emulator of its own. RetroArch alone runs every retro console, so it doesn't make one
 // "found": those wait, unticked, under More consoles ("RetroArch can run these") until you pick them.
-const pickFound=sc=>!!(sc&&((sc.romDirs||[]).length||(sc.emulator&&!isRA(sc.emulator))));
+const pickFound=(sc)=>!!(sc&&((sc.romDirs||[]).length||(sc.emulator&&!isRA(sc.emulator))));
 function pickItems(){
-  const L=info.consoles.map(c=>{const sc=cfg.systems[c.id];return {id:c.id,name:c.name,
-    found:()=>pickFound(sc),ra:()=>!pickFound(sc)&&isRA(sc.emulator),on:()=>sc.enabled!==false,set:v=>{sc.enabled=v},
-    status:()=>{const n=sc.romDirs.length,e=c.emulatorName||"Emulator";return sc.emulator?`${e} found${n?` · ${n} game folder${n===1?"":"s"}`:""}`:n?`Games found · ${e} not found yet`:`${e} not found`},
+  const L=info.consoles.map(c=>{const sc=cfg.systems[c.id],needsEmulator=c.requiresEmulator!==false;return {id:c.id,name:c.name,
+    found:()=>pickFound(sc,c),ra:()=>needsEmulator&&!pickFound(sc,c)&&isRA(sc.emulator),on:()=>sc.enabled!==false,set:v=>{sc.enabled=v},
+    status:()=>{const n=sc.romDirs.length,e=c.emulatorName||c.runnerName||"Direct launch";return needsEmulator?sc.emulator?`${e} found${n?` · ${n} game folder${n===1?"":"s"}`:""}`:n?`Games found · ${e} not found yet`:`${e} not found`:n?`${e} · ${n} game folder${n===1?"":"s"}`:`Choose a games folder`},
     // (beta.11) the Windows tiles: [what runs it, its state, the dot's tone]
-    ready:()=>!!(sc.emulator&&sc.romDirs.length),tile:()=>{const n=sc.romDirs.length;
-      return [c.emulatorName||"Emulator",sc.emulator&&n?`Ready · ${n} folder${n===1?"":"s"}`:sc.emulator?"No games folder yet":n?"Emulator not found":"Not found",sc.emulator&&n?"ok":sc.emulator||n?"warn":""]}}});
+    ready:()=>!!(sc.romDirs.length&&(!needsEmulator||sc.emulator)),tile:()=>{const n=sc.romDirs.length,e=c.emulatorName||c.runnerName||"Direct launch";
+      return [e,needsEmulator?sc.emulator&&n?`Ready · ${n} folder${n===1?"":"s"}`:sc.emulator?"No games folder yet":n?"Emulator not found":"Not found":n?`Ready · ${n} folder${n===1?"":"s"}`:"No games folder yet",needsEmulator?sc.emulator&&n?"ok":sc.emulator||n?"warn":"":n?"ok":"warn"]}}});
   if(!window.bsPlatform||bsPlatform.has("steam"))L.push({id:"steam",name:"Steam",found:()=>!!cfg.steam.path,on:()=>!!cfg.steam.enabled,set:v=>{cfg.steam.enabled=v},status:()=>cfg.steam.path?"Steam found · your PC games":"Steam not found",
     ready:()=>!!cfg.steam.path,tile:()=>["Your PC games",cfg.steam.path?"Ready":"Not found",cfg.steam.path?"ok":""]});
   for(const a of info.apps||[]){const c=cfg.apps[a.id];if(c)L.push({id:"app:"+a.id,name:a.name,found:()=>!!c.path,on:()=>!!c.enabled,set:v=>{c.enabled=v},status:()=>c.path?`${a.name} found · Media shelf`:`${a.name} not found`,
@@ -437,7 +438,7 @@ function pickCard(x,big){
 }
 // (beta.7) the folded "More consoles" list: small tick chips grouped by maker, so 30-odd consoles stay a tidy page
 const PICK_FAMILIES=[["Nintendo",["nes","snes","n64","gc","wii","wiiu","sw","sw2","gb","gbc","gba","nds","n3ds"]],["PlayStation",["psx","ps2","ps3","ps4","ps5","psp"]],
-  ["Sega",["mastersystem","megadrive","segacd","sega32x","saturn","dreamcast","gamegear"]],["Retro & arcade",[]],["Xbox, PC & apps",["xbox","x360","steam"]]];
+  ["Sega",["mastersystem","megadrive","segacd","sega32x","saturn","dreamcast","gamegear"]],["Retro & arcade",[]],["Xbox, PC & apps",["xbox","xone","x360","steam"]]];
 function pickFamily(id){if(/^app:/.test(id))return "Xbox, PC & apps";for(const[f,ids]of PICK_FAMILIES)if(ids.includes(id))return f;return "Retro & arcade"}
 function pickChip(x){const on=x.on();
   return el("button",{type:"button",class:"wz2-chip"+(on?" on":""),role:"checkbox","aria-checked":String(on),"data-pick":x.id,title:x.status(),onclick:()=>{x.set(!x.on());changed();render()}},
@@ -446,7 +447,7 @@ function pickSection(b){
   pickInit();
   const L=pickItems();if(!pickMain)pickMain=new Set(L.filter(x=>x.found()||x.on()).map(x=>x.id));
   const main=L.filter(x=>pickMain.has(x.id)),rest=L.filter(x=>!pickMain.has(x.id)),n=L.filter(x=>x.on()).length;
-  head(b,"Step 1 of 3","Which consoles do you play?",main.length?"Ticked ones get a shelf. Boxshelf found these on your PC; tick any others you play. You can change this any time in Settings.":searched?"Boxshelf didn't find any emulators yet. Tick the consoles you play and you'll point to their emulator and games next.":"Tick the consoles you play. Next you'll point to each one's emulator and games.");
+  head(b,"Step 1 of 3","Which consoles do you play?",main.length?"Ticked ones get a shelf. Boxshelf found these on your PC; tick any others you play. You can change this any time in Settings.":searched?"Boxshelf didn't find any game folders or emulators yet. Tick the consoles you play and add what each one needs next.":"Tick the consoles you play. Next, add the game folders and emulators they need.");
   if(main.length)b.append(el("div",{class:"wz2-grid"},main.map(x=>pickCard(x,true))));
   if(rest.length){const open=pickMore||!main.length;
     b.append(el("button",{type:"button",class:"con-more","aria-expanded":String(open),"data-info":winWizard()?"more":null,onclick:()=>{pickMore=!open;render()}},el("span",{text:`More consoles and apps (${rest.length})`}),el("span",{class:"con-more-ch","aria-hidden":"true"})));
@@ -476,13 +477,13 @@ function pickInfo(key){
   if(id==="steam")return {h:"Steam",p,li:[cfg.steam.path?`Steam folder: ${shortPath(cfg.steam.path)}`:"Steam not found yet","The Steam games installed on this PC, with their real covers.",miss]};
   if(/^app:/.test(id)){const a=(info.apps||[]).find(q=>"app:"+q.id===id),c=a&&cfg.apps[a.id];if(!c)return null;
     return {h:a.name,p,li:[c.path?`Found: ${shortPath(c.path)}`:`${a.name} not found yet`,"A tile for it on the Media shelf.",miss]}}
-  const def=info.consoles.find(c=>c.id===id),sc=cfg.systems[id];if(!def||!sc)return null;const e=def.emulatorName||"Emulator";
-  return {h:def.name,p,li:[sc.emulator?`${e}: ${shortPath(sc.emulator)}`:`${e} not found yet`,...(sc.romDirs.length?sc.romDirs.slice(0,3).map(d=>`Games: ${shortPath(d)}`):["No games folder yet"]),miss]}}
+  const def=info.consoles.find(c=>c.id===id),sc=cfg.systems[id];if(!def||!sc)return null;const e=def.emulatorName||def.runnerName||"Direct launch",needsEmulator=def.requiresEmulator!==false;
+  return {h:def.name,p,li:[needsEmulator?(sc.emulator?`${e}: ${shortPath(sc.emulator)}`:`${e} not found yet`):`${e}: starts each game's executable directly`,...(sc.romDirs.length?sc.romDirs.slice(0,3).map(d=>`Games: ${shortPath(d)}`):["No games folder yet"]),miss]}}
 // Finish setting up: only what the picked consoles still need (the emulator program, a games folder). Nothing missing:
 // this page just says so.
 function fixNeeds(){
   const out=[];
-  for(const c of info.consoles){const sc=cfg.systems[c.id];if(sc&&sc.enabled!==false&&!(sc.emulator&&sc.romDirs.length))out.push({kind:"con",def:c,sc})}
+  for(const c of info.consoles){const sc=cfg.systems[c.id];if(sc&&sc.enabled!==false&&!(sc.romDirs.length&&(c.requiresEmulator===false||sc.emulator)))out.push({kind:"con",def:c,sc})}
   if(cfg.steam.enabled&&!cfg.steam.path)out.push({kind:"steam"});
   for(const a of info.apps||[]){const c=cfg.apps[a.id];if(c&&c.enabled&&!c.path)out.push({kind:"app",def:a,c})}
   return out;
@@ -491,18 +492,18 @@ function fixRow(label,state,ok,...ctl){return el("div",{class:"wz2-row"},el("div
 const shortPath=p=>{const s=String(p||"");return s.length>58?"…"+s.slice(-56):s};
 function fixSection(b){
   const need=fixNeeds();
-  head(b,"Step 2 of 3",need.length?"A few things to finish":"Everything's ready",need.length?"Only what's missing for the shelves you picked. Anything you skip now can be done later in Settings.":"Every shelf you picked has its emulator and its games. On to the box art.");
+  head(b,"Step 2 of 3",need.length?"A few things to finish":"Everything's ready",need.length?"Only what's missing for the shelves you picked. Anything you skip now can be done later in Settings.":"Every shelf you picked is ready to find and launch its games. On to the box art.");
   // the picked shelves that are ready, as a row of cards with a tick (nothing to do there; it shows what you'll get)
   const ready=pickItems().filter(x=>x.on()&&!need.some(n=>(n.def&&("app:"+n.def.id===x.id||n.def.id===x.id))||(n.kind==="steam"&&x.id==="steam")));
   if(ready.length){if(need.length)b.append(el("div",{class:"wz2-sub",text:"Ready"}));
     b.append(el("div",{class:"wz2-grid"+(need.length?" small":"")},ready.map(x=>el("div",{class:"wz2-card on ready"},el("span",{class:"wz2-tick","aria-hidden":"true"}),winWizard()?wzTileKids(x):[el("span",{class:"wz2-name",text:x.name}),el("span",{class:"wz2-st ok",text:x.status()})]))))}
   for(const n of need){
     const box=el("section",{class:"wz2-fix"});
-    if(n.kind==="con"){const {def,sc}=n,emu=def.emulatorName||"Emulator";
+    if(n.kind==="con"){const {def,sc}=n,emu=def.emulatorName||def.runnerName||"Direct launch",needsEmulator=def.requiresEmulator!==false;
       box.append(el("div",{class:"wz2-fh"},el("span",{class:"wz2-fname",text:def.name}),el("button",{type:"button",class:"btn small ghost",onclick:()=>{sc.enabled=false;changed();render()}},"No shelf for now")));
-      const find=el("button",{type:"button",class:"btn small"+(sc.emulator?"":" primary"),onclick:async()=>{const p=await api.pick({kind:"file",title:`Find ${def.exeNames[0]}`,filters:[{name:emu,extensions:["exe"]}]}).catch(()=>null);if(p){sc.emulator=p;changed();render()}}},sc.emulator?"Change":"Find it…");
-      const get=OFFICIAL[def.id]?el("button",{type:"button",class:"btn small ghost",onclick:()=>openLink(OFFICIAL[def.id][0][1])},`Get ${OFFICIAL[def.id][0][0]} ↗`):null;
-      box.append(fixRow(emu,sc.emulator?"Found":"Not found yet",!!sc.emulator,find,sc.emulator?null:get));
+      if(needsEmulator){const find=el("button",{type:"button",class:"btn small"+(sc.emulator?"":" primary"),onclick:async()=>{const p=await api.pick({kind:"file",title:`Find ${def.exeNames[0]}`,filters:[{name:emu,extensions:["exe"]}]}).catch(()=>null);if(p){sc.emulator=p;changed();render()}}},sc.emulator?"Change":"Find it…");
+        const get=OFFICIAL[def.id]?el("button",{type:"button",class:"btn small ghost",onclick:()=>openLink(OFFICIAL[def.id][0][1])},`Get ${OFFICIAL[def.id][0][0]} ↗`):null;
+        box.append(fixRow(emu,sc.emulator?"Found":"Not found yet",!!sc.emulator,find,sc.emulator?null:get))}
       const sugg=det&&det.systems&&det.systems[def.id]?det.systems[def.id].romDirs.filter(d=>!sc.romDirs.includes(d)):[];
       const add=el("button",{type:"button",class:"btn small"+(sc.romDirs.length?"":" primary"),onclick:async()=>{const p=await api.pick({kind:"folder",title:`Choose the folder with your ${def.name} games`}).catch(()=>null);if(p&&!sc.romDirs.includes(p)){sc.romDirs.push(p);changed();render()}}},sc.romDirs.length?"Add another":"Add folder");
       box.append(fixRow("Games",sc.romDirs.length?sc.romDirs.map(shortPath).join(", "):`The folder with your ${def.name} games (subfolders count too)`,!!sc.romDirs.length,add));
@@ -669,14 +670,17 @@ function applyLook(){
 
 function consoleSection(b,def){
   const c=cfg.systems[def.id];
-  head(b,def.emulatorName,def.name,CONSOLE_HELP[def.id]);
+  const needsEmulator=def.requiresEmulator!==false,runner=def.emulatorName||def.runnerName||"Direct launch";
+  head(b,needsEmulator?def.emulatorName:def.runnerName,def.name,CONSOLE_HELP[def.id]);
   b.append(card("Shelf","",toggle(`Show the ${def.name} shelf`,c.enabled,v=>{c.enabled=v},"en-"+def.id)));
 
   // Emulator
-  const share=def.id==="wii"&&!c.emulator&&cfg.systems.gc.emulator?[el("button",{type:"button",class:"btn small",onclick:()=>{c.emulator=cfg.systems.gc.emulator;changed();render()}},"Use GameCube's Dolphin")]:
-              def.id==="gc"&&!c.emulator&&cfg.systems.wii.emulator?[el("button",{type:"button",class:"btn small",onclick:()=>{c.emulator=cfg.systems.wii.emulator;changed();render()}},"Use Wii's Dolphin")]:[];
-  b.append(card("Emulator","",pathField(`${def.emulatorName} program`,c.emulator,{want:"file",set:v=>{c.emulator=v},pickTitle:`Find ${def.exeNames[0]}`,filters:[{name:def.emulatorName,extensions:["exe"]}],placeholder:`…\\${def.exeNames[0]}`,extra:share,
-    help:det&&det.systems[def.id]&&det.systems[def.id].emulator&&det.systems[def.id].emulator!==c.emulator?`Also found: ${det.systems[def.id].emulator}`:null}),siteLinks(def.id)));
+  if(needsEmulator){
+    const share=def.id==="wii"&&!c.emulator&&cfg.systems.gc.emulator?[el("button",{type:"button",class:"btn small",onclick:()=>{c.emulator=cfg.systems.gc.emulator;changed();render()}},"Use GameCube's Dolphin")]:
+                def.id==="gc"&&!c.emulator&&cfg.systems.wii.emulator?[el("button",{type:"button",class:"btn small",onclick:()=>{c.emulator=cfg.systems.wii.emulator;changed();render()}},"Use Wii's Dolphin")]:[];
+    b.append(card("Emulator","",pathField(`${def.emulatorName} program`,c.emulator,{want:"file",set:v=>{c.emulator=v},pickTitle:`Find ${def.exeNames[0]}`,filters:[{name:def.emulatorName,extensions:["exe"]}],placeholder:`…\\${def.exeNames[0]}`,extra:share,
+      help:det&&det.systems[def.id]&&det.systems[def.id].emulator&&det.systems[def.id].emulator!==c.emulator?`Also found: ${det.systems[def.id].emulator}`:null}),siteLinks(def.id)));
+  }else b.append(card("Game launcher","",el("div",{class:"hint-text",text:`Each game folder is discovered by ${def.gameFile} and started directly with ${runner}. No emulator or ROM launch options are used.`})));
 
   // Game folders
   const list=el("div",{class:"field folders"});
@@ -694,7 +698,7 @@ function consoleSection(b,def){
     pathField("Your own cover art folder (optional)",c.artDir,{want:"dir",optional:true,set:v=>{c.artDir=v},pickTitle:"Choose a cover art folder",help:"Name images after the game file, like Pikmin (USA).png. Add -back for the back cover. Games without art get a generated cover."})));
 
   b.append(card("When you press Play","",toggle("Boot screen with the game's cover",c.insertAnim!==false,v=>{c.insertAnim=v},"ins-"+def.id),
-    el("div",{class:"hint-text",text:"The console's start-up look with the game's cover and a progress line while the emulator opens."}),
+    el("div",{class:"hint-text",text:`The console's start-up look with the game's cover and a progress line while ${needsEmulator?"the emulator opens":"the game starts"}.`}),
     toggle("Your boot video before games",c.bootOnLaunch!==false,v=>{c.bootOnLaunch=v},"boot-"+def.id),
     el("div",{class:"hint-text",text:"Plays the boot video you added for this console (Customize) instead of the boot screen. Without a video, the built-in intro plays only when the boot screen is off."})));
   if(def.id==="gc"&&api.findIpl&&(!window.bsPlatform||bsPlatform.has("dolphinIpl"))){ /* (beta.10) Windows only: Android has no findIpl (stuck on "Checking…"), Linux's Dolphin folders differ */
@@ -713,6 +717,7 @@ function consoleSection(b,def){
     }).catch(()=>{st.textContent="Set the Dolphin program first."});
   }
 
+  if(needsEmulator){
   // Advanced
   const adv=el("details",{class:"adv"},el("summary",{},"Launch options"));
   const ga=el("input",{class:"text",type:"text",value:c.gameArgs,spellcheck:"false","aria-label":"Game launch options"});ga.addEventListener("change",()=>{c.gameArgs=ga.value;changed()});
@@ -724,6 +729,7 @@ function consoleSection(b,def){
     el("div",{class:"field"},el("div",{class:"lbl"},"Hide the emulator while it starts"),el("div",{class:"row"},cs,el("span",{class:"hint-text",text:"seconds"})),el("div",{class:"hint-text",text:`Boxshelf's loading screen stays in front this long so you don't see ${def.emulatorName}'s window before the game goes fullscreen. Raise it if you still see a flash, 0 turns it off. Default: ${def.coverSeconds}.`})),
     el("div",{class:"d-actions"},el("button",{type:"button",class:"btn small",disabled:!c.emulator,onclick:()=>api.launchEmulator(def.id).catch(e=>Shelf.toast(e.message))},`Test: open ${def.emulatorName}`)));
   b.append(card("Advanced","",adv));
+  }
 }
 
 function steamSection(b){

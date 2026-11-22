@@ -19,7 +19,7 @@ paths.setAppRoot(linux.isLinux ? linux.appRoot(app.isPackaged, __dirname) : app.
 const config = require('./main/config');
 const { CONSOLES, APPS } = require('./main/systems');
 const { detectAll, detectSystem, findSteam } = require('./main/detect');
-const { scanSystem: scanFolders, scanSystemAsync: scanFoldersAsync, forget: scanForget, setLog: scanSetLog } = require('./main/scanner'); // (beta.9: scanForget clears the scanner's kept scans)
+const { scanSystem: scanFolders, scanSystemAsync: scanFoldersAsync, gamesFromFiles, forget: scanForget, setLog: scanSetLog } = require('./main/scanner'); // (beta.9: scanForget clears the scanner's kept scans)
 const arcadenames = require('./main/arcadenames');
 // (beta.5) a game's own name (Details → Rename: cfg.games["<console>:<file>"].title) replaces the scanned one wherever main
 // reads games: the shelf, box art and manual lookups, matching. fileTitle keeps the scanned one. Copies, never the
@@ -253,6 +253,7 @@ function computeRoots() {
   if (!library._cacheSet) { library.setCacheRoot(path.join(app.getPath('userData'), 'library')); library._cacheSet = true; }
   const roots = [path.join(paths.appRoot(), 'themes'), path.join(paths.appRoot(), 'Custom themes'), path.join(app.getPath('userData'), 'custom-theme-cache'), icons.folder(), ...library.roots()].filter(Boolean); // (custom themes: their pictures, and the scaled copies of big ones)
   for (const s of Object.values(cfg.systems)) { roots.push(...(s.romDirs || [])); if (s.artDir) roots.push(paths.expand(s.artDir)); }
+  roots.push(...paths.assignedExeArtDirs(cfg.systems, pcgames.customGames((cfg.pc || {}).custom)));
   roots.push(path.join(app.getPath('userData'), 'stremio-art'), path.join(app.getPath('userData'), 'commercials')); // the movie shelves' posters and art; the retro TV's ads
   if (paths.artLibrary()) roots.push(paths.artLibrary());
   // (beta.14) PS3 trophy pictures: RPCS3's trophy folders (dev_hdd0\home, nothing else of RPCS3's) and packs unpacked from games
@@ -334,11 +335,47 @@ let libGen = 0;
 function artBump(p) { const k = path.resolve(p).toLowerCase(); artVer.set(k, Math.max(Date.now(), (artVer.get(k) || 0) + 1)); libGen++; }
 function fileUrl(p) { if (!p) return null; const v = artVer.get(path.resolve(p).toLowerCase()); return 'bsfile://local/' + encodeURIComponent(p) + (v ? '?v=' + v : ''); }
 // A game file named by the screen must be one the scanner could have found: inside one of that system's games folders.
+function assignedExecutable(systemId, file) {
+  const f = path.resolve(String(file || '')).toLowerCase();
+  return ((cfg.pc || {}).custom || []).find(g => g && g.shelf === systemId && typeof g.exe === 'string' &&
+    /\.exe$/i.test(g.exe) && path.resolve(g.exe).toLowerCase() === f) || null;
+}
 function gameFile(systemId, file) {
   const sc = cfg.systems[systemId]; if (!sc) throw new Error('Unknown system.');
+  const def = CONSOLES.find(c => c.id === systemId);
   const f = path.resolve(String(file || '')).toLowerCase();
-  if (!(sc.romDirs || []).some(d => paths.inDir(f, d)) && !paths.inDir(f, rommDir(systemId))) throw new Error('That game is not in a games folder.'); // (beta.12: or RomM's download folder for a console with none)
-  return { sc, file: String(file) };
+  const inFolders = (sc.romDirs || []).some(d => paths.inDir(f, d)) || paths.inDir(f, rommDir(systemId));
+  const custom = assignedExecutable(systemId, f);
+  if (!inFolders && !custom) throw new Error('That game is not in a games folder.'); // (beta.12: or RomM's download folder for a console with none)
+  if (def && def.directGameExe && path.basename(f) !== String(def.gameFile || '').toLowerCase()) throw new Error(`Xbox One games must be launched from their ${def.gameFile} marker.`);
+  return { sc, file: String(file), directExe: !!custom, directGame: !!(def && def.directGameExe) };
+}
+function assignedConsoleGames(def, sc) {
+  const custom = pcgames.customGames((cfg.pc || {}).custom).filter(g => g.shelf === def.id && /\.exe$/i.test(g.exe));
+  return gamesFromFiles(def, sc, custom.map(g => ({ file: g.exe, title: ownTitle(g.id) || g.title }))).map((game, i) => ({
+    ...game, id: custom[i].id, source: 'custom', directExe: true, args: custom[i].args || ''
+  }));
+}
+async function scanConsoleAsync(def, sc, fresh) {
+  const games = await scanSystemAsync(def, sc, fresh);
+  const found = new Set(games.map(g => path.resolve(g.file).toLowerCase()));
+  return games.concat(assignedConsoleGames(def, sc).filter(g => {
+    const file = path.resolve(g.file).toLowerCase();
+    if (found.has(file)) return false;
+    found.add(file);
+    return true;
+  }));
+}
+function consoleStudioList() {
+  return CONSOLES.filter(def => cfg.systems[def.id] &&
+    ((cfg.systems[def.id].romDirs || []).length || pcgames.customGames((cfg.pc || {}).custom).some(g => g.shelf === def.id)))
+    .map(def => ({ def, sc: cfg.systems[def.id] }));
+}
+function coverSystemList(ids) {
+  const assigned = pcgames.customGames((cfg.pc || {}).custom);
+  return CONSOLES.filter(def => ids.includes(def.id) && cfg.systems[def.id] &&
+    ((cfg.systems[def.id].romDirs || []).length || assigned.some(g => g.shelf === def.id && /\.exe$/i.test(g.exe))))
+    .map(def => ({ def, cfg: cfg.systems[def.id] }));
 }
 
 function createWindow() {
@@ -618,7 +655,7 @@ function onExit(info) {
   // (1.82) a game's emulator that closed by itself within 5 s (a missing BIOS, keys or firmware, bad launch options) wasn't a
   // play: the shelf says which emulator closed instead of quietly coming back, and the history isn't touched
   const quick = !!(info && !info.failedToStart && info.code !== -1 && !quitAt && runKind === 'game' && lastLaunch && info.ms < 5000);
-  if (quick) { const def = CONSOLES.find(c => c.id === lastLaunch.systemId); info = { ...info, quick: true, emulatorName: (def && def.emulatorName) || 'The emulator', flatpakFix: flatpakFix(lastLaunch) }; log('Emulator closed right away:', info.emulatorName, 'code', info.code, info.ms + ' ms'); }
+  if (quick) { const def = CONSOLES.find(c => c.id === lastLaunch.systemId), direct = !!(def && def.directGameExe); info = { ...info, quick: true, directGame: direct, emulatorName: direct ? 'The game executable' : (def && def.emulatorName) || 'The emulator', flatpakFix: flatpakFix(lastLaunch) }; log(direct ? 'Game executable closed right away:' : 'Emulator closed right away:', info.emulatorName, 'code', info.code, info.ms + ' ms'); }
   if (quitAt) { log('game closed', Date.now() - quitAt, 'ms after Quit' + (Date.now() - quitAt > 2400 ? ' (had to be forced)' : '')); quitAt = 0; }
   padwatch.stop(); homemenu.end(); if (info && (info.failedToStart || info.quick)) historyUndo(); else historyEnd();
   if (coverTimer && coverTimer.keep) clearInterval(coverTimer.keep);
@@ -704,7 +741,7 @@ async function buildLibrary() {
     // (beta.7) arcade zips are named from FinalBurn Neo's list: fetched once in the background, then the shelf refreshes
     for (const g of rommGames(def.id, games)) games.push(g); // (beta.12) this console's RomM games not on this PC yet
     if (games.length && arcadenames.SYSTEMS.has(def.id) && !arcadenames.ready()) arcadenames.fetchNames().then(ok => { if (ok && alive()) win.webContents.send('library:changed', { arcade: 1 }); });
-    shelves.push({ id: def.id, kind: 'console', name: def.name, emulatorName: def.emulatorName, hasEmulator: !!sc.emulator && paths.isFile(emuPath(sc.emulator)) /* (1.82) an uninstalled one gets no Open tile */, emulator: sc.emulator, emulatorIcon: fileUrl(await iconQuick(sc.emulator)), gameArgs: sc.gameArgs, bootOnLaunch: sc.bootOnLaunch !== false, useIpl: def.id === 'gc' && !!sc.useIpl, insertAnim: sc.insertAnim !== false, games });
+    shelves.push({ id: def.id, kind: 'console', name: def.name, emulatorName: def.emulatorName, runnerName: def.runnerName, directGameExe: !!def.directGameExe, hasEmulator: !!sc.emulator && paths.isFile(emuPath(sc.emulator)) /* (1.82) an uninstalled one gets no Open tile */, emulator: sc.emulator, emulatorIcon: sc.emulator ? fileUrl(await iconQuick(sc.emulator)) : null, gameArgs: sc.gameArgs, bootOnLaunch: sc.bootOnLaunch !== false, useIpl: def.id === 'gc' && !!sc.useIpl, insertAnim: sc.insertAnim !== false, games });
   }
   let pcShelf = [];
   // (beta.10) Steam was only looked for in the first-run setup: one installed later, moved, or not found then never showed.
@@ -739,6 +776,22 @@ async function buildLibrary() {
   // (beta.10) a game added by hand can be moved to the PC shelf (Settings → Custom games → the game → Shelf); (beta.14) or
   // to any console's shelf (one is made for it if that console has none); an id that isn't a console stays on Custom
   const { toPc, onCustom } = pcgames.placeCustom(shelves, mine, CONSOLES, pcGame);
+  for (const sh of shelves) if (sh.kind === 'console') {
+    const def = CONSOLES.find(c => c.id === sh.id), sc = def && cfg.systems[def.id]; if (!def || !sc) continue;
+    const assigned = sh.games.filter(g => g && g.directExe), metadata = gamesFromFiles(def, sc, assigned.map(g => ({ file: g.file, title: g.title })));
+    for (let i = 0; i < assigned.length; i++) {
+      const g = assigned[i], meta = metadata[i], art = meta.art || {};
+      g.ext = 'exe'; g.sizeBytes = meta.sizeBytes; g.region = '';
+      g.info = moreShotsInfo(def.id, meta, covers.gameInfo(def.id, g.title));
+      g.manualMiss = manualMiss(def.id, meta);
+      g.art = {
+        front: fileUrl(art.front) || g.art.front || null, hero: fileUrl(art.hero) || g.art.hero || null,
+        back: fileUrl(art.back), madeBack: art.madeBack || undefined, spine: fileUrl(art.spine),
+        madeSpine: art.madeSpine || undefined, disc: fileUrl(art.disc),
+        manual: (art.manual || []).map(fileUrl), manualPdf: fileUrl(art.manualPdf)
+      };
+    }
+  }
   if (epic.length || toPc.length) pcShelf = pcShelf.concat([...epic, ...toPc].map(pcGame)).sort((a, b) => String(a.title).localeCompare(String(b.title), undefined, { sensitivity: 'base' }));
   if (pcShelf.length) shelves.push({ id: 'pc', kind: 'steam', name: 'PC', games: pcShelf });
   if (onCustom.length) shelves.push({ id: 'custom', kind: 'steam', name: 'Custom', games: onCustom.map(pcGame).sort((a, b) => String(a.title).localeCompare(String(b.title), undefined, { sensitivity: 'base' })) });
@@ -1103,7 +1156,7 @@ async function cropBoth(file) {
 // Spine of a full box wrap, cut in the same hidden image window. Case shapes (front width and spine thickness, both
 // relative to the case's height): DVD-style cases 135x190x14 mm, Wii U 135x190x11, Blu-ray 135x171x12, Switch
 // 105x170x10, PSP 104x180x14, 3DS 136x121x13.5 (wider than tall)
-const CASE = { gc: [.711, .074], wii: [.711, .074], ps2: [.711, .074], x360: [.711, .074], xbox: [.711, .074], wiiu: [.711, .058], ps3: [.789, .07], ps4: [.789, .07], ps5: [.789, .07], sw: [.618, .059], sw2: [.618, .059], psp: [.578, .078], n3ds: [1.127, .112] };
+const CASE = { gc: [.711, .074], wii: [.711, .074], ps2: [.711, .074], x360: [.711, .074], xbox: [.711, .074], xone: [.711, .074], wiiu: [.711, .058], ps3: [.789, .07], ps4: [.789, .07], ps5: [.789, .07], sw: [.618, .059], sw2: [.618, .059], psp: [.578, .078], n3ds: [1.127, .112] };
 async function spineCut(file, sysId, part) { // part 'back' (1.71): the back panel left of the spine, from the same fold search
   const [front, spine] = CASE[sysId] || CASE.gc;
   const r = await helperJob('img-tools.html', async () => { const b = await fs.promises.readFile(file); return { data: new Uint8Array(b.buffer, b.byteOffset, b.length), mode: 'spine', front, spine, part: part === 'back' ? 'back' : 'spine' }; }, 30000, true);
@@ -1380,7 +1433,7 @@ handle('covers:resume', () => ({ ok: autoPause(false) }));
 // scanned yet) gets one drawn from its own pictures and LaunchBox's details (renderer/img-tools.js back()), saved as
 // "<name>-backmade.jpg" beside its art. The scanner uses it only while there's no real back, and the weekly art check
 // keeps looking for a real one. Settings → Box art → "Make backs for games without one" (ui.makeBacks).
-const BACK_BAND = { sw2: ['#e60012', '#fff', 'Nintendo Switch 2'], sw: ['#e60012', '#fff', 'Nintendo Switch'], ps5: ['#f2f4f8', '#111318', 'PS5'], ps4: ['#1d4ed8', '#fff', 'PS4'], ps3: ['#141414', '#fff', 'PS3'], ps2: ['#1d3fb8', '#fff', 'PlayStation 2'], psp: ['#141414', '#fff', 'PSP'], wii: ['#f2f2f2', '#222', 'Wii'], wiiu: ['#1fa3d9', '#fff', 'Wii U'], gc: ['#3b2a7a', '#fff', 'GameCube'], n3ds: ['#cf0a2c', '#fff', 'Nintendo 3DS'], x360: ['#57b52d', '#fff', 'Xbox 360'], xbox: ['#2f8f1f', '#fff', 'Xbox'] };
+const BACK_BAND = { sw2: ['#e60012', '#fff', 'Nintendo Switch 2'], sw: ['#e60012', '#fff', 'Nintendo Switch'], ps5: ['#f2f4f8', '#111318', 'PS5'], ps4: ['#1d4ed8', '#fff', 'PS4'], ps3: ['#141414', '#fff', 'PS3'], ps2: ['#1d3fb8', '#fff', 'PlayStation 2'], psp: ['#141414', '#fff', 'PSP'], wii: ['#f2f2f2', '#222', 'Wii'], wiiu: ['#1fa3d9', '#fff', 'Wii U'], gc: ['#3b2a7a', '#fff', 'GameCube'], n3ds: ['#cf0a2c', '#fff', 'Nintendo 3DS'], x360: ['#57b52d', '#fff', 'Xbox 360'], xbox: ['#2f8f1f', '#fff', 'Xbox'], xone: ['#107c10', '#fff', 'Xbox One'] };
 let backsBusy = false;
 async function fetchImage(u) {
   const ac = new AbortController(), t = setTimeout(() => ac.abort(), 10000);
@@ -1620,7 +1673,12 @@ handle('sw2:builds', async ({ file }) => {
   return { builds: list, nup, first: first ? first.exe : '' };
 });
 handle('launch:game', async ({ systemId, file, emulator }) => {
-  let { sc } = gameFile(systemId, file);
+  let { sc, directExe } = gameFile(systemId, file);
+  if (directExe) {
+    const game = pcgames.customGames((cfg.pc || {}).custom).find(g => g.shelf === systemId && path.resolve(g.exe).toLowerCase() === path.resolve(String(file)).toLowerCase());
+    if (!game) throw new Error('That executable is no longer assigned to this console.');
+    return launchPcEntry(game);
+  }
   // Switch 2: the build chosen at Play (only one of the listed builds), remembered as this game's first offer next time
   if (systemId === 'sw2' && emulator) {
     const b = (await sw2BuildList(file)).find(x => path.resolve(x.exe).toLowerCase() === path.resolve(emulator).toLowerCase());
@@ -1663,28 +1721,31 @@ function retroCore(exe, core) {
 }
 async function launchGameNow(systemId, file, sc) {
   if (systemId === 'ps4' && /\.pkg$/i.test(file)) throw new Error('This PS4 game is still a .pkg package, which shadPS4 can\'t run. Extract it to a folder first (current shadPS4 builds no longer install packages themselves) with a PKG extractor such as PKG Editor or the ShadPS4Plus pkg_extractor, into a folder inside your PS4 games folder. Once that folder has an eboot.bin in it, the game shows up here as installed.');
+  const def = CONSOLES.find(c => c.id === systemId), direct = !!(def && def.directGameExe);
+  if (direct && (!paths.isFile(file) || path.basename(file).toLowerCase() !== String(def.gameFile || '').toLowerCase())) throw new Error(`Xbox One games must be launched from their ${def.gameFile} marker.`);
+  let ipl = false, extra = [], rom = file, env = null;
+  if (!direct) {
   // (beta.12, Windows) a console started through RocketLauncher: its own path (launchViaRocket); none of the emulator
   // preparation below applies, RocketLauncher picks and starts the emulator itself
   if (rocket.useFor(systemId, cfg)) { const via = await launchViaRocket(systemId, file, sc); if (via) return via; }
   if (systemId === 'x360') sc.emulator = emucfg.resolveExe('x360', sc.emulator).exe; // (sc is this launch's copy: the saved setting is fixed on load / save)
   // (1.82) no emulator, or one that's gone: say which console and emulator, before anything is prepared for it (Dolphin's
   // settings, a 3DS .cia installed into Azahar's folder)
-  { const def = CONSOLES.find(c => c.id === systemId), con = def ? def.name : systemId, emu = (def && def.emulatorName) || 'its emulator';
+  { const con = def ? def.name : systemId, emu = (def && def.emulatorName) || 'its emulator';
     if (!sc.emulator) throw new Error(`No emulator is set up for ${con} yet. Choose ${emu} in Settings → ${con} → Emulator.`);
     if (!paths.isFile(sc.emulator)) throw new Error(`${emu} isn't at ${sc.emulator} any more. Choose it again in Settings → ${con} → Emulator.`); }
   // GameCube startup sequence: tell Dolphin not to skip it, and lift the
   // loading screen early so the whole sequence is visible.
-  const ipl = systemId === 'gc' && sc.useIpl;
-  const extra = ipl ? ['-C', 'Dolphin.Core.SkipIPL=False'] : [];
+  ipl = systemId === 'gc' && sc.useIpl;
+  extra = ipl ? ['-C', 'Dolphin.Core.SkipIPL=False'] : [];
   // Dolphin's warning pop-ups (e.g. "IPL file is not a known good dump") use its panic handlers.
   if (ipl && sc.hideDolphinWarnings) extra.push('-C', 'Dolphin.Interface.UsePanicHandlers=False');
   await setupPending(sc.emulator); // (beta.7) Set up for me, waiting for this emulator's settings file (made by its first run)
   emucfg.beforeLaunch(systemId, sc.emulator, { quitCombo: cfg.ui.quitCombo === false ? null : (cfg.ui.quitComboKeys || 'l3+r3') }); extra.push(...emucfg.launchArgs(systemId, sc.emulator)); // Dolphin: borderless + no stop question for this run only
   // 3DS .cia: installed into Azahar the first time (the boot slide shows how far), then the installed copy is booted
-  let rom = systemId === 'n3ds' ? await n3ds.bootFile(file, sc.emulator, t => { if (alive()) win.webContents.send('launch:status', String(t)); }) : file;
+  rom = systemId === 'n3ds' ? await n3ds.bootFile(file, sc.emulator, t => { if (alive()) win.webContents.send('launch:status', String(t)); }) : file;
   if (systemId === 'sw2') { rom = nx2.bootFile(file); log('Switch 2 launch:', path.basename(nx2.gameRoot(file)), rom !== file ? '(newest update)' : ''); } // (an unpacked game: its newest update's exefs\main)
   // PS5 (Kyty): the game's folder, with the Kyty launcher's settings, the game's patch file and the build's preset
-  let env = null;
   // (PS5: Settings pointed at Kyty's launcher: the game itself starts in kyty_emulator.exe beside it; no emulator there = the launcher)
   if (systemId === 'ps5' && /^(kyty_)?launcher\.exe$/i.test(path.basename(sc.emulator || ''))) { const emu = path.join(path.dirname(sc.emulator), 'kyty_emulator.exe'); if (paths.isFile(emu)) sc.emulator = emu; else sc.viaLauncher = true; }
   // (PS5, "Start games through Kyty's launcher" on: the launcher itself, where the game is started; it takes no game to open)
@@ -1711,13 +1772,13 @@ async function launchGameNow(systemId, file, sc) {
       sc.gameArgs = `-f -L "${core}" "{rom}"`; log('RetroArch launch:', def.id, path.basename(core)); } }
   // Dolphin: the Wii remote is let go first, so Dolphin finds it as it always does
   if (systemId === 'gc' || systemId === 'wii' || /dolphin/i.test(path.basename(sc.emulator || ''))) await wiimote.pause();
+  }
   await taskbarHide(); // (beta.6) gone before the emulator's first window can show
-  let r; try { r = launcher.launchGame(sc, rom, onExit, extra, env); } catch (e) { wiimote.resume(); taskbarShow('the game did not start'); throw e; } runKind = 'game'; pendingPower = null; launcher.setRunningName(gameTitleOf(systemId, file)); if (linux.isLinux) linuxpad.begin(() => closeGame()); // (beta.9: hold Select + Start to close it)
+  let r; try { r = direct ? launcher.launchApp(file, onExit, []) : launcher.launchGame(sc, rom, onExit, extra, env); } catch (e) { if (!direct) wiimote.resume(); taskbarShow('the game did not start'); throw e; } runKind = 'game'; pendingPower = null; launcher.setRunningName(gameTitleOf(systemId, file)); if (linux.isLinux) linuxpad.begin(() => closeGame()); // (beta.9: hold Select + Start to close it)
   // (Dolphin: once it has the remote, Boxshelf listens alongside for a held Home; listening only, nothing is sent)
   if (systemId === 'gc' || systemId === 'wii' || /dolphin/i.test(path.basename(sc.emulator || ''))) setTimeout(() => { if (launcher.isRunning()) wiimote.watch(); }, 4000);
-  lastLaunch = { systemId, at: Date.now(), rom: String(rom || ''), exe: String(sc.emulator || '') }; historyStart(systemId + ':' + file); // (beta.12: the game and emulator, for the Linux Flatpak hint)
-  const def = CONSOLES.find(c => c.id === systemId);
-  if (cfg.ui.homeMenu !== false) homemenu.begin({ systemId, exe: sc.emulator, systemName: def ? def.name : systemId, hotkeys: sc.hotkeys, file });
+  lastLaunch = { systemId, at: Date.now(), rom: String(rom || ''), exe: String(direct ? file : sc.emulator || '') }; historyStart(systemId + ':' + file); // (beta.12: the game and emulator, for the Linux Flatpak hint)
+  if (cfg.ui.homeMenu !== false) homemenu.begin({ systemId, exe: direct ? '' : sc.emulator, systemName: def ? def.name : systemId, hotkeys: sc.hotkeys, file });
   const base = ipl ? (sc.iplCoverSeconds ?? 2.5) : (+sc.coverSeconds || 0);
   // the loading screen now lifts the moment the game's window is up and fullscreen; the per-console seconds (plus a
   // margin for slow starts) are only the latest it waits
@@ -1890,8 +1951,8 @@ const STORE_NAME = { epic: 'Epic Games', ubisoft: 'Ubisoft', ea: 'EA', xbox: 'Xb
 // (beta.4) a PC game that isn't Steam's, named by id only: Epic's go through its launcher's link; Quiver's and the ones
 // added by hand start their own program in its own folder (recomps read their files from there), with the Home menu and
 // the quit buttons like any app
-handle('launch:pc', async ({ id }) => { coversForGame(); /* (beta.14) */
-  const g = pcgames.byId(id); if (!g) throw new Error("That game isn't on the shelf any more. The shelf is refreshing; try again in a moment.");
+async function launchPcEntry(g) { coversForGame(); /* (beta.14) */
+  if (!g) throw new Error("That game isn't on the shelf any more. The shelf is refreshing; try again in a moment.");
   // (beta.12) Seamless play on: a store game (Epic, Ubisoft, EA, Xbox) is still started through its store, and watched
   if (seamless.on() && ((g.uri && /^(com\.epicgames\.launcher|uplay|origin2):\/\//i.test(g.uri)) || (g.shellApp && /^[\w.-]+_[a-z0-9]+![\w.-]+$/i.test(g.shellApp))))
     return seamless.launchWatched({ kind: g.source, id: g.id, dir: g.dir || '', exe: g.exe || '', title: g.title, systemName: STORE_NAME[g.source] || 'PC',
@@ -1905,11 +1966,14 @@ handle('launch:pc', async ({ id }) => { coversForGame(); /* (beta.14) */
   busyCheck();
   launching = true; try { await taskbarHide(); } finally { launching = false; } // (beta.6)
   let r; try { r = launcher.launchApp(g.exe, onExit, launcher.buildArgs(g.args || '', '')); } catch (e) { taskbarShow('the game did not start'); throw e; } runKind = 'app'; pendingPower = null; launcher.setRunningName(g.title); log('PC launch:', g.source, g.title);
-  if (cfg.ui.homeMenu !== false) homemenu.begin({ systemId: 'pc', exe: g.exe, systemName: g.source === 'quiver' ? 'Quiver' : g.source === 'gog' ? 'GOG' : 'Custom', title: g.title, hotkeys: {} });
+  const consoleDef = g.source === 'custom' && CONSOLES.find(c => c.id === g.shelf);
+  if (cfg.ui.homeMenu !== false) homemenu.begin({ systemId: consoleDef ? consoleDef.id : 'pc', exe: g.exe,
+    systemName: consoleDef ? consoleDef.name : g.source === 'quiver' ? 'Quiver' : g.source === 'gog' ? 'GOG' : 'Custom', title: g.title, hotkeys: {} });
   if (seamless.on()) historyTrack(g.id); // (beta.12, Seamless play: its playtime too)
   watchPad({ mouse: false, appPid: r.pid, fullscreenKey: null, home: true });
   return { ...r, cover: coverWhileStarting(10) };
-});
+}
+handle('launch:pc', async ({ id }) => launchPcEntry(pcgames.byId(id)));
 // (beta.5) a PC game's cover picker (main/pccovers.js): the page names the game by id and an option by key only
 const pcLookup = id => { id = String(id || ''); const m = /^steam-(\d{1,10})$/.exec(id); if (m) return { id, appid: m[1], title: '' }; const g = pcgames.byId(id); return g ? { id, title: g.title } : null; };
 const pcGameOf = id => { const g = pcLookup(id); if (!g) throw new Error("That game isn't on the shelf any more."); return g; };
@@ -2112,12 +2176,11 @@ handle('covers:download', async ({ systemIds, types, hd }) => {
   if (coversBusy) throw new Error('Covers are already downloading.');
   coversBusy = true;
   try {
-    const list = CONSOLES.filter(d => systemIds.includes(d.id) && cfg.systems[d.id] && (cfg.systems[d.id].romDirs || []).length)
-      .map(def => ({ def, cfg: cfg.systems[def.id] }));
-    if (!list.length) throw new Error('Add a games folder first.');
+    const list = coverSystemList(systemIds);
+    if (!list.length) throw new Error('Add a games folder or assign an executable game first.');
     log('Download covers for', list.map(x => x.def.id).join(','));
     await artstudio.ready(); // the record of which pictures Boxshelf wrote (first start of 1.68): an HD upgrade asks it
-    const rep = await covers.downloadCovers(list, info => { if (alive()) win.webContents.send('covers:progress', info); }, types, { hd: !!hd, region: cfg.ui.artRegion, ...artOpts(true) });
+    const rep = await covers.downloadCovers(list, info => { if (alive()) win.webContents.send('covers:progress', info); }, types, { hd: !!hd, region: cfg.ui.artRegion, scanGames: scanConsoleAsync, ...artOpts(true) });
     const got = (rep.systems || []).reduce((a, r) => a + r.front + r.back + r.spine + r.disc + (r.upgraded || 0), 0);
     if (got && alive()) win.webContents.send('library:changed', { covers: 0 }); // the shelf picks the new pictures up
     if (got) artstudio.forget(); // …and so do the Studio's game lists
@@ -2127,7 +2190,7 @@ handle('covers:download', async ({ systemIds, types, hd }) => {
 let coversUserCancel = false;
 handle('covers:cancel', (a) => { if (a && a.auto) { const st = autoState; if (st) { st.stopped = true; st.paused = false; clearInterval(st.t); } covers.cancel('auto'); return true; } // (beta.10) the art card: only the background run
   coversUserCancel = true; covers.cancel(); return true; });
-handle('covers:coverage', async () => { const out = []; for (const s of sysList(CONSOLES.map(c => c.id))) { await yieldNow(); out.push(...(await covers.coverage([s]))); } return out; }); // (beta.9: a console at a time, with a breath between: every console's pictures in one go froze Settings' Box art page; beta.10: coverage is async)
+handle('covers:coverage', async () => { const out = []; for (const s of coverSystemList(CONSOLES.map(c => c.id))) { await yieldNow(); out.push(...(await covers.coverage([s], { scanGames: scanConsoleAsync }))); } return out; }); // (beta.9: a console at a time, with a breath between: every console's pictures in one go froze Settings' Box art page; beta.10: coverage is async)
 // New games while Boxshelf is open: watch the game folders, and once nothing has changed in them for 8 s (a big copy is
 // finished) tell the shelf to look again. A new game then shows up on the shelf, and in the museum it arrives as a parcel.
 // Never during a game (it waits), and at most one rescan per quiet spell.
@@ -2756,7 +2819,7 @@ function saveArt(art) { cfg = persistCfg(config.normalize({ ...cfg, art })); }
 const artOpts = explicit => ({ styleFor: id => (cfg.art && cfg.art.styles && cfg.art.styles[id] ? artstudio.styleFor(cfg, id) : null), lockedFor: (id, file) => artstudio.lockedFor(id, file), serial: (id, file, fn) => artstudio.serial(id, file, fn), mayReplace: f => artstudio.mayReplace(f, !!explicit), isPoster: f => artstudio.isPoster(f) });
 let artChangedT = null;
 function initArtStudio() {
-  artstudio.init({ dataDir: app.getPath('userData'), log, getCfg: () => cfg, setArt: saveArt, consoles: () => sysList(CONSOLES.map(c => c.id)).map(x => ({ def: x.def, sc: x.cfg })), scan: (def, sc, fresh) => scanSystemAsync(def, sc, fresh),
+  artstudio.init({ dataDir: app.getPath('userData'), log, getCfg: () => cfg, setArt: saveArt, consoles: consoleStudioList, scan: scanConsoleAsync,
     count: id => { const sh = lastLib && lastLib.find(x => x.id === id && x.kind === 'console'); return sh ? sh.games.length : null; },
     gameFile, fileUrl, send: (ch, d) => { if (alive()) win.webContents.send(ch, d); },
     placed: dest => { artBump(dest); },
@@ -2789,7 +2852,7 @@ handle('art:refreshCancel', () => ({ cancelled: covers.cancelRefresh() }));
 handle('art:indexInfo', () => covers.indexInfo());
 // ---------- Manual Studio (Settings → Art & manuals → Manuals; Details → Choose manual…; the Art Studio's Manual part) ----------
 function initManualStudio() {
-  manualstudio.init({ dataDir: app.getPath('userData'), log, consoles: () => sysList(CONSOLES.map(c => c.id)).map(x => ({ def: x.def, sc: x.cfg })), scan: (def, sc, fresh) => scanSystemAsync(def, sc, fresh), gameFile, fileUrl,
+  manualstudio.init({ dataDir: app.getPath('userData'), log, consoles: consoleStudioList, scan: scanConsoleAsync, gameFile, fileUrl,
     send: (ch, d) => { if (alive()) win.webContents.send(ch, d); }, idle: gameIdle,
     changed: info => { if (alive()) win.webContents.send('library:changed', info); },
     renderPdf: p => renderPdfPages(p, 1600), renderFirst: async p => { const d = (await renderPdfCover(p))[0]; const m = /^data:image\/jpeg;base64,(.+)$/.exec(String(d || '')); return m ? Buffer.from(m[1], 'base64') : null; },
@@ -2853,6 +2916,7 @@ function persistCfg(next) { config.save(sealed(next)); return next; }
 // What changed in a save that main has to act on: the display, Steam's tools, the accounts (re-checked on their own)
 function cfgChanged(prev, next) {
   if (!prev || !next) return;
+  if (JSON.stringify((prev.pc || {}).custom || []) !== JSON.stringify((next.pc || {}).custom || [])) { artstudio.forget(); manualstudio.forget(); }
   // (beta.12) RomM's address or its settings changed: used from now on, its library read again on the next build
   if (JSON.stringify(prev.romm || {}) !== JSON.stringify(next.romm || {})) { rommApply(); rommLib = null; rommSyncedOnce = false; }
   const pu = prev.ui || {}, nu = next.ui || {};

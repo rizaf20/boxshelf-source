@@ -279,7 +279,11 @@ function placeCustom(shelves, games, systems, pcGame) {
       let k = shelves.findIndex(s => s && (s.kind !== 'console' || order.indexOf(s.id) > at)); if (k < 0) k = shelves.length;
       shelves.splice(k, 0, sh); }
     if (!Array.isArray(sh.games)) sh.games = [];
-    for (const g of list) { const x = pcGame(g); let k = sh.games.findIndex(o => o && byTitle(o, x) > 0); if (k < 0) k = sh.games.length; sh.games.splice(k, 0, x); }
+    for (const g of list) { const base = pcGame(g), x = /\.exe$/i.test(g.exe)
+      ? { ...base, kind: 'rom', source: 'custom', directExe: true, file: g.exe, ext: 'exe', args: g.args || '' }
+      : base;
+      if (x.directExe && sh.games.some(o => o && typeof o.file === 'string' && path.resolve(o.file).toLowerCase() === path.resolve(x.file).toLowerCase())) continue;
+      let k = sh.games.findIndex(o => o && byTitle(o, x) > 0); if (k < 0) k = sh.games.length; sh.games.splice(k, 0, x); }
   }
   return { toPc, onCustom };
 }

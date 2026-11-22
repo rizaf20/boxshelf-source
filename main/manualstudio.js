@@ -81,6 +81,7 @@ function gameRec(sysId, sc, g) {
   const home = paths.manualDirFor(sc, g.file), a = g.art || {}, now = (a.manual && a.manual[0]) || a.manualPdf;
   return { sysId, sc, game: g, dir: now ? path.dirname(now) : home, home, base: paths.artBase(g.file), key: keyOf(sysId, g.file) };
 }
+function forget() { gamesMemo.clear(); lists.clear(); }
 
 // ---------- what a manual on disk is ----------
 const PAGE_RE = /-manual-\d+\.(jpe?g|png|webp)$/i;
@@ -485,4 +486,4 @@ async function repick(job, pref) {
   finally { setTimeout(() => jobs.delete(job.id), 60000).unref?.(); }
 }
 
-module.exports = { init, cacheDir, studio, games, cands, use, undo, lock, own, setPref, cancel, isLocked, picked, prefFor, chosen, PREFS, _t: { expectOf, completeness, rank, keyOf, db: () => db(), reset: () => { store = null; lists.clear(); gamesMemo.clear(); }, verify, pdfPages, collCand, iaCand, earlierCands, apply } };
+module.exports = { init, cacheDir, studio, games, cands, use, undo, lock, own, setPref, cancel, forget, isLocked, picked, prefFor, chosen, PREFS, _t: { expectOf, completeness, rank, keyOf, db: () => db(), reset: () => { store = null; lists.clear(); gamesMemo.clear(); }, verify, pdfPages, collCand, iaCand, earlierCands, apply } };

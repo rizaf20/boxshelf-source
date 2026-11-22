@@ -38,6 +38,7 @@ function findFile(root, names, depth = 2) {
 // Name used for a game's art files: the file name without extension, or for folder games (PS4 eboot.bin) the game folder
 function artBase(file) {
   const b = path.basename(file);
+  if (/^azimuth\.exe$/i.test(b)) return path.basename(path.dirname(file)).replace(/[<>:"/\\|?*]+/g, '_');
   // PS3 folder games: …\<Game>\PS3_GAME\USRDIR\EBOOT.BIN (named by <Game>) or …\NPUB12345\USRDIR\EBOOT.BIN (by the id folder)
   if (/^eboot\.bin$/i.test(b) && /^usrdir$/i.test(path.basename(path.dirname(file)))) {
     let d = path.dirname(path.dirname(file)); if (/^ps3_game$/i.test(path.basename(d))) d = path.dirname(d);
@@ -92,6 +93,14 @@ const plainLib = root => path.join(artLib, libName(path.resolve(String(root))));
 const clashes = root => { const r = path.resolve(String(root)), n = libName(r).toLowerCase(); return libRoots.some(o => o !== r.toLowerCase() && libName(o).toLowerCase() === n); };
 const libFolder = root => { if (!clashes(root)) return plainLib(root); const r = path.resolve(String(root)), where = path.dirname(r).replace(/[<>:"|?*\\/]+/g, ' ').trim() || 'root'; return path.join(artLib, `${libName(r)} (${where})`); };
 function artDirFor(cfg, file) { if (cfg && cfg.artDir) return expand(cfg.artDir); const root = romRoot(cfg, file); return artLib ? path.join(libFolder(root), 'covers') : path.join(root, 'covers'); }
+function assignedExeArtDirs(systems, games) {
+  const dirs = new Set();
+  for (const game of Array.isArray(games) ? games : []) {
+    if (!game || typeof game.exe !== 'string' || !/\.exe$/i.test(game.exe) || !game.shelf || !systems || !systems[game.shelf]) continue;
+    dirs.add(artDirFor(systems[game.shelf], game.exe));
+  }
+  return [...dirs];
+}
 function manualDirFor(cfg, file) { if (cfg && cfg.artDir) return expand(cfg.artDir); const root = romRoot(cfg, file); return artLib ? path.join(libFolder(root), 'manuals') : path.join(root, 'covers'); }
 // every folder a console's art may be in, the library first (art left beside the games is still found)
 function artDirsFor(cfg) { const roms = (cfg && cfg.romDirs) || []; return [cfg && cfg.artDir && expand(cfg.artDir), ...(artLib ? roms.flatMap(d => [path.join(libFolder(d), 'covers'), path.join(libFolder(d), 'manuals'), ...(clashes(d) ? [path.join(plainLib(d), 'covers'), path.join(plainLib(d), 'manuals')] : [])]) : []), ...roms.flatMap(d => [path.join(d, 'covers'), path.join(d, 'media', 'covers'), path.join(d, 'boxart')])].filter(Boolean); }
@@ -161,4 +170,4 @@ function psError(s) {
   const out = []; s.replace(/<S S="Error">([\s\S]*?)<\/S>/g, (m, t) => { out.push(t); return m; });
   return out.join('').replace(/_x000D__x000A_/g, ' ').replace(/_x([0-9A-F]{4})_/g, (m, h) => String.fromCharCode(parseInt(h, 16))).replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
 }
-module.exports = { setReadingLibrary, readingRoot, findOldReading, copyReading, _logRoots: logRoots, artBase, inDir, artDirFor, manualDirFor, artDirsFor, setArtLibrary, artLibrary, libFolder, psError, setAppRoot, appRoot, expand, isFile, isDir, readDir, findFile };
+module.exports = { setReadingLibrary, readingRoot, findOldReading, copyReading, _logRoots: logRoots, artBase, inDir, artDirFor, assignedExeArtDirs, manualDirFor, artDirsFor, setArtLibrary, artLibrary, libFolder, psError, setAppRoot, appRoot, expand, isFile, isDir, readDir, findFile };

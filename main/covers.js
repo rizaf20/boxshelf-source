@@ -15,7 +15,7 @@ const { isFile, artBase, artDirFor } = require('./paths');
 const LIBRETRO = { gc: 'Nintendo - GameCube', wii: 'Nintendo - Wii', psp: 'Sony - PlayStation Portable', wiiu: 'Nintendo - Wii U', sw: 'Nintendo - Switch', ps3: 'Sony - PlayStation 3', ps4: 'Sony - PlayStation 4', ps2: 'Sony - PlayStation 2', x360: 'Microsoft - Xbox 360', n3ds: 'Nintendo - Nintendo 3DS', xbox: 'Microsoft - Xbox',
   // (beta.6) the retro shelves (folder names checked on thumbnails.libretro.com)
   psx: 'Sony - PlayStation', nes: 'Nintendo - Nintendo Entertainment System', snes: 'Nintendo - Super Nintendo Entertainment System', n64: 'Nintendo - Nintendo 64', gb: 'Nintendo - Game Boy', gbc: 'Nintendo - Game Boy Color', gba: 'Nintendo - Game Boy Advance', nds: 'Nintendo - Nintendo DS', megadrive: 'Sega - Mega Drive - Genesis', mastersystem: 'Sega - Master System - Mark III', gamegear: 'Sega - Game Gear', dreamcast: 'Sega - Dreamcast', saturn: 'Sega - Saturn', pcengine: 'NEC - PC Engine - TurboGrafx 16', neogeo: 'SNK - Neo Geo', arcade: 'FBNeo - Arcade Games', segacd: 'Sega - Mega-CD - Sega CD', sega32x: 'Sega - 32X', atari2600: 'Atari - 2600', atarilynx: 'Atari - Lynx', wonderswan: 'Bandai - WonderSwan', dos: 'DOS' };
-const LAUNCHBOX = { gc: 'Nintendo GameCube', wii: 'Nintendo Wii', psp: 'Sony PSP', wiiu: 'Nintendo Wii U', sw: 'Nintendo Switch', sw2: 'Nintendo Switch 2', ps3: 'Sony Playstation 3', ps4: 'Sony Playstation 4', ps5: 'Sony Playstation 5', ps2: 'Sony Playstation 2', x360: 'Microsoft Xbox 360', n3ds: 'Nintendo 3DS', xbox: 'Microsoft Xbox',
+const LAUNCHBOX = { gc: 'Nintendo GameCube', wii: 'Nintendo Wii', psp: 'Sony PSP', wiiu: 'Nintendo Wii U', sw: 'Nintendo Switch', sw2: 'Nintendo Switch 2', ps3: 'Sony Playstation 3', ps4: 'Sony Playstation 4', ps5: 'Sony Playstation 5', ps2: 'Sony Playstation 2', x360: 'Microsoft Xbox 360', xbox: 'Microsoft Xbox', xone: 'Microsoft Xbox One', n3ds: 'Nintendo 3DS',
   // (beta.6) the retro shelves: LaunchBox's own platform names (the index rebuilds once to take them in)
   psx: 'Sony Playstation', nes: 'Nintendo Entertainment System', snes: 'Super Nintendo Entertainment System', n64: 'Nintendo 64', gb: 'Nintendo Game Boy', gbc: 'Nintendo Game Boy Color', gba: 'Nintendo Game Boy Advance', nds: 'Nintendo DS', megadrive: 'Sega Genesis', mastersystem: 'Sega Master System', gamegear: 'Sega Game Gear', dreamcast: 'Sega Dreamcast', saturn: 'Sega Saturn', pcengine: 'NEC TurboGrafx-16', neogeo: 'SNK Neo Geo AES', arcade: 'Arcade', segacd: 'Sega CD', sega32x: 'Sega 32X', atari2600: 'Atari 2600', atarilynx: 'Atari Lynx', wonderswan: 'WonderSwan', dos: 'MS-DOS' };
 const IDX_V = 8; // 8: full box wraps (Box - Full) indexed too, to cut spines from
@@ -628,10 +628,10 @@ async function isLowA(file, key) { const z = await sizeOfAsync(file); return !!z
 // per console: how many games, and for each kind how many have it / how many of those are low-res (header reads only)
 // (beta.10) async: the art folders listed once (artLister) instead of up to 16 stats per game, header reads with
 // fs.promises, and a breath every 25 ms inside a console (a big library or a NAS held the main process up here)
-async function coverage(systems) {
+async function coverage(systems, opts = {}) {
   const out = [], ls = artLister(); let t0 = Date.now();
   for (const { def, cfg } of systems) {
-    const games = await scanSystemAsync(def, cfg), r = { id: def.id, name: def.name, total: games.length };
+    const games = await (opts.scanGames ? opts.scanGames(def, cfg) : scanSystemAsync(def, cfg)), r = { id: def.id, name: def.name, total: games.length };
     KINDS.forEach(([k]) => { r[k] = 0; r[k + 'Low'] = 0; });
     for (const g of games) { if (Date.now() - t0 > 25) { await new Promise(res => setImmediate(res)); t0 = Date.now(); }
       const dir = artDirFor(cfg, g.file), base = artBase(g.file);
@@ -680,7 +680,7 @@ async function coversRun(systems, progress, plan, opts, tok) {
     await new Promise(r => setImmediate(r)); // (beta.9: a breath between consoles)
     await held(tok); if (tok.c) break; // (beta.10: paused)
     const kinds = kindsFor(def.id), want = k => kinds.includes(k) || kinds.includes('redo-' + k), redo = k => kinds.includes('redo-' + k);
-    const scanned = await scanSystemAsync(def, cfg), games = opts.only ? scanned.filter(g => opts.only.has(g.id)) : scanned; // opts.only: just these game ids (beta.10: scanned async)
+    const scanned = await (opts.scanGames ? opts.scanGames(def, cfg) : scanSystemAsync(def, cfg)), games = opts.only ? scanned.filter(g => opts.only.has(g.id)) : scanned; // opts.only: just these game ids (beta.10: scanned async)
     const rep = { id: def.id, name: def.name, total: games.length, front: 0, back: 0, spine: 0, disc: 0, upgraded: 0, had: 0, missed: [], missedKinds: {}, got: [], up: [] };
     report.systems.push(rep);
     if (!games.length) continue;

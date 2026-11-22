@@ -108,6 +108,7 @@ let spineMat = null, standInSpine = null;
     wiiu: keepC({ man: [120, 180, .8], d: 120, disc: 'bd' }),
     ps2: keepC({ d: 120, disc: 'dvd', lift: .06, well: 'ps2' }),
     xbox: keepC({ d: 120, disc: 'dvd', shell: '#2a7834' }),
+    xone: keepC({ d: 120, disc: 'dvd' }),
     x360: keepC({ d: 120, disc: 'dvd' }),
     ps3: keepC({ mm: BD, man: [120, 160, 2], d: 120, disc: 'bd', clear: 1 }),
     ps4: keepC({ mm: BD, man: null, d: 120, disc: 'bd' }),
