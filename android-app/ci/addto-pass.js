@@ -89,10 +89,13 @@ module.exports = async function addToPass({ browser, base, check, newPage, OUT }
       await pick('fav', async () => !(await favs()).includes('gc0')); out.favOut = !(await favs()).includes('gc0'); out.favText2 = ((__at.opt('fav') || {}).textContent || '');
       { const k = await cfg(); k.ui.collections[0].ids = ['sw0']; await window.boxshelf.saveConfig(k); await Shelf.refresh(true); await w(900); }
       Shelf._find.go('sw0'); await w(900); out.swNativeRatio = ratio();
+      out.swNativeMeta = document.getElementById('gMeta').textContent;
       out.swCollection = Shelf._adds.go('col-t1', 'sw0'); await w(900); out.swCollectionRatio = ratio();
+      out.swCollectionMeta = document.getElementById('gMeta').textContent;
       Shelf._find.go('sw0'); await w(900); await openAdd();
       await pick('sh:wii', async () => (((await cfg()).ui.shelfAdds || {}).wii || []).includes('sw0'));
       out.swOtherShelf = Shelf._adds.go('wii', 'sw0'); await w(900); out.swOtherShelfRatio = ratio();
+      out.swOtherShelfMeta = document.getElementById('gMeta').textContent;
       out.swExpectedRatio = Shelf.caseShape('sw').ratio;
       await close(); return out; });
     check('Add to… → a My shelf: on it (saved, ticked, its shelf shows the game), and off again',
@@ -100,6 +103,9 @@ module.exports = async function addToPass({ browser, base, check, newPage, OUT }
     check('Every shelf keeps a game\'s originating platform case dimensions (Switch cover fit matches its native shelf, My shelf and added shelf)',
       c.swCollection && c.swOtherShelf && Math.abs(c.swNativeRatio - c.swExpectedRatio) < .005 && Math.abs(c.swCollectionRatio - c.swExpectedRatio) < .005 && Math.abs(c.swOtherShelfRatio - c.swExpectedRatio) < .005,
       JSON.stringify({ native: c.swNativeRatio, collection: c.swCollectionRatio, addedShelf: c.swOtherShelfRatio, added: c.swOtherShelf, expected: c.swExpectedRatio }));
+    check('Every shelf shows platform and play history, with no ROM file size or format text',
+      ['swNativeMeta','swCollectionMeta','swOtherShelfMeta'].every(k => /Switch/i.test(c[k]) && !/\b(EXE|ROM|XCI|NSP|MB|GB|KB)\b/i.test(c[k])),
+      JSON.stringify({ native: c.swNativeMeta, collection: c.swCollectionMeta, addedShelf: c.swOtherShelfMeta }));
     check('Add to… → Favourites toggles (♡ / ✓)', c.favIn && /^✓ Favourites/.test(c.favText) && c.favCur === true && c.favOut && /^♡ Favourites/.test(c.favText2), JSON.stringify({ favIn: c.favIn, t: c.favText, out: c.favOut, t2: c.favText2 }));
 
     // ---- + New shelf…: Settings' New shelf row, typed into, makes the shelf with the game ----

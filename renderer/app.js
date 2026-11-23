@@ -318,7 +318,9 @@ function reHome(){if(!cfgInfo)return;const was=cur();homeThaw=true;try{buildHome
 function autoStatusChanged(){if(!cfgInfo||sysBusy())return;const a=autoOpts();
   if(!(a.playing===true||a.finished===true||((cfgInfo.config.ui.collections||[]).some(c=>c&&c.rule&&c.rule.kind==="status"))))return;
   buildHome();renderTabs()}
-function homeLine(g){const h=HIST[g.id];const parts=[shelfFor(g).name];if(h&&h.count)parts.push("played "+fmtDay(h.last/1000));if(isFav(g))parts.push("♥ Favorite");return parts}
+function gameLine(g){const h=HIST[g.id],s=shelfFor(g),platform=g&&g.directExe&&(s&&(/^(custom|pc)$/i.test(s.id)))?"PC":(s?s.name:"");
+  const parts=[platform];if(h&&h.count)parts.push("played "+fmtDay(h.last/1000));else parts.push("Not played yet");if(isFav(g))parts.push("♥ Favorite");return parts.filter(Boolean)}
+function homeLine(g){return gameLine(g)}
 async function toggleFav(){
   if((mode!=="browse"&&mode!=="details")||sysBusy())return; // the Home shelf appearing mid-switch would shift the shelves
   const g=curGame();if(!g||!isGame(g)||!cfgInfo)return;
@@ -646,9 +648,8 @@ function metaFor(g){
   if(g.kind==="setup")return [`No ${s?s.name+" ":""}games yet`,`${okWord()} opens ${s?s.name:"its"} settings to add a games folder`];
   if(g.kind==="random")return g.pick?["Surprise pick",(g.pick.sh||shelves[g.pick.shelf]).name,rerollWord()]:["Shuffle","Lands on a random game"];
   if(g.kind==="app")return ["Streaming app"];
-  if(g.kind==="steam")return [PC_SRC[g.source]||"Steam",g.minutes?`${(g.minutes/60).toFixed(1)} h played`:"Not played yet"];
-  const r=raFor(g);
-  return [g.region,g.ext&&g.ext.toUpperCase(),fmtSize(g.sizeBytes),g.discs&&g.discs.length>1?`${g.discs.length} discs`:"",hasManual(g)?"Manual":"",r?(r.mastered==="mastered"?"★ Mastered":`★ ${r.earned}/${r.total}`):""].filter(Boolean);
+  if(g.kind==="steam")return gameLine(g);
+  return gameLine(g);
 }
 function updateInfo(){pvBackSchedule();
   bsSelectSoon();
@@ -2763,8 +2764,8 @@ function qsAndroidOrder(out,ui){const by=id=>out.find(x=>x.id===id),cust=by("cus
   for(const id of order){if(id===null){rows.push({sep:1});continue}const x=by(id);if(x)rows.push(x)}
   out.length=0;out.push(...rows)}
 function qsRenderGame(){const box=qsEl.querySelector(".qm-game"),g=qsGame();box.hidden=!g;if(!g){box.innerHTML="";return}
-  const h=HIST[g.id],sh=shelfFor(g)||{},cov=frontUrl(g),fav=isFav(g);
-  const meta=[h&&h.ms?fmtPlay(h.ms)+" played":"",h&&h.last?"last played "+fmtDay(h.last/1000):"Not played yet"].filter(Boolean).join(" · ");
+  const sh=shelfFor(g)||{},cov=frontUrl(g);
+  const meta=gameLine(g).join(" · ");
   box.innerHTML=`<div class="qm-gtop">${cov?`<img class="qm-cov" alt="" src="${qsEsc(thumb(cov,256))}">`:'<div class="qm-cov"></div>'}<div class="qm-gtx"><div class="qm-kick">${qsEsc(sh.name||"")}</div><div class="qm-gt">${qsEsc(g.title)}</div><div class="qm-gm">${qsEsc(meta)}</div></div></div>`}
 function qsRender(){const L=qsEl.querySelector(".qm-list");[...L.children].forEach(e=>{if(!e.classList.contains("qm-hl"))e.remove()});qm.rows=[];qsRenderGame();const g=qsGame();
   qsRows().forEach(r=>{
