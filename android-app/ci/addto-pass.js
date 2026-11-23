@@ -77,7 +77,7 @@ module.exports = async function addToPass({ browser, base, check, newPage, OUT }
       JSON.stringify({ on2: b.on2, opened: b.opened, wiiCur: b.wiiCur, saved: b.saved, menu: b.menu, after: b.after, wii: b.wii && b.wii.all.slice(0, 4) }));
 
     // ---- a My shelf, Favourites ----
-    const c = await page.evaluate(async () => { const { w, cfg, cur, openAdd, pick, close } = __at, out = {};
+    const c = await page.evaluate(async () => { const { w, cfg, cur, openAdd, pick, close } = __at, out = {}, ratio = () => { const b = document.querySelector('#track .slot.sel .box'); return b ? b.offsetWidth / b.offsetHeight : null; };
       { const k = await cfg(); k.ui.collections = [{ id: 't1', name: 'Couch', ids: [] }]; await window.boxshelf.saveConfig(k); await Shelf.refresh(true); await w(900); }
       Shelf._find.go('gc0'); await w(900); out.opened = await openAdd(); out.colText = ((__at.opt('col:t1') || {}).textContent || '');
       const ids = async () => (((await cfg()).ui.collections || []).find(x => x.id === 't1') || {}).ids || [];
@@ -87,9 +87,19 @@ module.exports = async function addToPass({ browser, base, check, newPage, OUT }
       const favs = async () => (await cfg()).ui.favorites || [];
       await pick('fav', async () => (await favs()).includes('gc0')); out.favIn = (await favs()).includes('gc0'); out.favText = ((__at.opt('fav') || {}).textContent || ''); out.favCur = cur('fav');
       await pick('fav', async () => !(await favs()).includes('gc0')); out.favOut = !(await favs()).includes('gc0'); out.favText2 = ((__at.opt('fav') || {}).textContent || '');
+      { const k = await cfg(); k.ui.collections[0].ids = ['sw0']; await window.boxshelf.saveConfig(k); await Shelf.refresh(true); await w(900); }
+      Shelf._find.go('sw0'); await w(900); out.swNativeRatio = ratio();
+      out.swCollection = Shelf._adds.go('col-t1', 'sw0'); await w(900); out.swCollectionRatio = ratio();
+      Shelf._find.go('sw0'); await w(900); await openAdd();
+      await pick('sh:wii', async () => (((await cfg()).ui.shelfAdds || {}).wii || []).includes('sw0'));
+      out.swOtherShelf = Shelf._adds.go('wii', 'sw0'); await w(900); out.swOtherShelfRatio = ratio();
+      out.swExpectedRatio = Shelf.caseShape('sw').ratio;
       await close(); return out; });
     check('Add to… → a My shelf: on it (saved, ticked, its shelf shows the game), and off again',
       c.opened && c.colText === 'Couch' && c.colIn.includes('gc0') && c.colCur === true && c.colShelf === true && c.onCol.shelf === 'col-t1' && !c.colOut.includes('gc0') && c.colCur2 === false, JSON.stringify(c).slice(0, 500));
+    check('Every shelf keeps a game\'s originating platform case dimensions (Switch cover fit matches its native shelf, My shelf and added shelf)',
+      c.swCollection && c.swOtherShelf && Math.abs(c.swNativeRatio - c.swExpectedRatio) < .005 && Math.abs(c.swCollectionRatio - c.swExpectedRatio) < .005 && Math.abs(c.swOtherShelfRatio - c.swExpectedRatio) < .005,
+      JSON.stringify({ native: c.swNativeRatio, collection: c.swCollectionRatio, addedShelf: c.swOtherShelfRatio, added: c.swOtherShelf, expected: c.swExpectedRatio }));
     check('Add to… → Favourites toggles (♡ / ✓)', c.favIn && /^✓ Favourites/.test(c.favText) && c.favCur === true && c.favOut && /^♡ Favourites/.test(c.favText2), JSON.stringify({ favIn: c.favIn, t: c.favText, out: c.favOut, t2: c.favText2 }));
 
     // ---- + New shelf…: Settings' New shelf row, typed into, makes the shelf with the game ----
