@@ -536,10 +536,11 @@ function stepIn() {
   try { win.setIgnoreMouseEvents(false); } catch {}
   try { win.webContents.send('run:aside', false); } catch {}
 }
-// the game's window is fullscreen: lift the cover a beat later (its first frame), never sooner than 0.8 s in
+// the game's window is fullscreen: lift a beat later (its first frame), unless this launch is holding the full duration
 function liftCover() {
   const t = coverTimer; if (!t || !t.lift) return;
   seamless.mark('window up');
+  if (t.waitFullDuration) return;
   const wait = Math.max(350, (t.minMs || 800) - (Date.now() - t.at));
   setTimeout(() => { if (coverTimer === t) { log('game window ready: lifting the loading screen'); t.lift(); } }, wait);
 }
@@ -577,7 +578,7 @@ function bringBack() {
 // While an emulator boots, keep Boxshelf's black loading screen above it so its
 // windowed start-up never shows. Then step aside so the game is in front.
 let coverTimer = null;
-function coverWhileStarting(seconds) {
+function coverWhileStarting(seconds, options = {}) {
   if (coverTimer && coverTimer.keep) clearInterval(coverTimer.keep);
   clearTimeout(coverTimer);
   if (!win || !(seconds > 0)) return 0;
@@ -620,9 +621,9 @@ function coverWhileStarting(seconds) {
     homemenu.ready(); setTimeout(() => { if (launcher.isRunning()) { padwatch.front(); homemenu.raise(); } }, 1500);
     }, 300);
   };
-  // lifts when the game's window is up and fullscreen (padwatch GAMEFS → liftCover), or after `seconds` at the latest
+  // lifts when the game's window is up and fullscreen, unless waitFullDuration is set, or after `seconds` at the latest
   coverTimer = setTimeout(lift, seconds * 1000);
-  coverTimer.keep = keep; coverTimer.lift = lift; coverTimer.at = Date.now();
+  coverTimer.keep = keep; coverTimer.lift = lift; coverTimer.at = Date.now(); coverTimer.waitFullDuration = options.waitFullDuration === true;
   return seconds;
 }
 
@@ -1981,7 +1982,8 @@ async function launchPcEntry(g) { coversForGame(); /* (beta.14) */
   if (consoleDef) historyStart(g.id); // console-assigned executables use the console game's history id and session tracking
   else if (seamless.on()) historyTrack(g.id); // (beta.12, Seamless play: its playtime too)
   watchPad({ mouse: false, appPid: r.pid, fullscreenKey: null, home: true });
-  return { ...r, cover: coverWhileStarting(10) };
+  const coverSeconds = Number.isFinite(+cfg.ui.exeCoverSeconds) ? Math.min(180, Math.max(0, +cfg.ui.exeCoverSeconds)) : 10;
+  return { ...r, cover: coverWhileStarting(coverSeconds, { waitFullDuration: cfg.ui.exeCoverWaitFullDuration === true }) };
 }
 handle('launch:pc', async ({ id }) => launchPcEntry(pcgames.byId(id)));
 // (beta.5) a PC game's cover picker (main/pccovers.js): the page names the game by id and an option by key only

@@ -191,6 +191,8 @@ function build(){
     T("Show installed Steam games","steam.enabled",true,"Adds a PC shelf with every game Steam has installed. Uninstalled games are left out.",{rescan:true,keys:"steam"}),
     T("Hide Steam tools","steam.hideTools",true,"Leaves Proton, Steamworks Common Redistributables and other tools off the shelf.",{rescan:true,keys:"redistributables proton steam"}),
     F("Steam folder","steam.path","folder","The folder that contains steam.exe. Found automatically; change it only if Steam lives somewhere unusual.",{ph:"C:\\Program Files (x86)\\Steam",rescan:true,want:"dir",pickTitle:"Choose your Steam folder"}),
+    S("Longest loading screen for PC executables","ui.exeCoverSeconds",10,0,180,5,v=>v===0?"Off":v%60===0?`${v/60} min`:`${v} s`,"The loading screen covers directly launched PC games, including Custom games assigned to a console shelf. By default it lifts as soon as the game is fullscreen; turn on Wait full duration to keep it up until this limit. Set up to 3 minutes for a slow first start; 0 turns it off.",{keys:"exe executable loading screen splash shader cache startup wait"}),
+    T("Wait full duration, even if fullscreen","ui.exeCoverWaitFullDuration",false,"Keeps the loading screen in front for the whole selected duration instead of dismissing it when the game becomes fullscreen. Use this for slow shader compilation; it applies to all directly launched PC executables.",{keys:"exe shader cache fullscreen loading screen wait full duration"}),
     A("Get Steam","Open site","Opens Steam's download page in your browser.",()=>openLink(OFFICIAL.steam)),
     // (beta.4) Epic's installs join the PC shelf (main/pcgames.js reads its install list; Play goes through its launcher)
     T("Show installed Epic Games","pc.epic",true,"Adds the games the Epic Games Launcher has installed to the PC shelf. They start through the Epic launcher, so its sign-in and cloud saves work as usual.",{rescan:true,keys:"epic games store fortnite launcher",sub:()=>pcCount("epic")}),
@@ -884,7 +886,7 @@ function conPages(id){
   if(id==="ps5")adv.push(H("Kyty"),
     T("Start games through Kyty's launcher",p+"viaLauncher",false,"Off: Play starts the game straight away, with the settings you chose in Kyty's launcher (and the KytyJets preset). On: Play opens Kyty's launcher and you start the game there (it can't be told which game to open)."));
   adv.push(H("Launching"),
-    S("Longest loading screen",p+"coverSeconds",def.coverSeconds!=null?def.coverSeconds:4,0,30,.5,v=>v===0?"Off":v+" s","The black loading screen hides the emulator's windows while it starts. It lifts as soon as the game is fullscreen; this is only the longest it waits. 0 turns it off."),
+    S("Longest loading screen",p+"coverSeconds",def.coverSeconds!=null?def.coverSeconds:4,0,180,.5,v=>v===0?"Off":v%60===0?`${v/60} min`:`${v} s`,"The black loading screen hides the emulator's windows while it starts. It lifts as soon as the game is fullscreen; this is only the longest it waits. Set up to 3 minutes for a slow first start; 0 turns it off."),
     ...(needsEmulator?[X("Game launch options",p+"gameArgs","What Boxshelf passes to the emulator when you play. {rom} is the game file.",{d:def.gameArgs,mono:true,more:"Default: "+(def.gameArgs||"(none)")}),
     A("Restore default launch options","Restore","Puts the launch options back to Boxshelf's defaults.",()=>{c.gameArgs=def.gameArgs||"";c.emulatorArgs=def.emulatorArgs||"";changed(null);toast("Launch options back to the defaults")},{ns:true}),
     ]:[]),

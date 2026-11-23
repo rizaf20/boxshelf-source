@@ -59,6 +59,11 @@ try {
     { id: 'default', title: 'Custom Game', exe: defaultFile, args: '', shelf: 'custom' }
   ];
   const normalized = config.normalize(saved);
+  assert.equal(config.normalize({ ...saved, ui: { ...saved.ui, exeCoverSeconds: 120 } }).ui.exeCoverSeconds, 120);
+  assert.equal(config.normalize({ ...saved, ui: { ...saved.ui, exeCoverSeconds: 121 } }).ui.exeCoverSeconds, 120);
+  assert.equal(config.normalize({ ...saved, ui: { ...saved.ui, exeCoverSeconds: 0 } }).ui.exeCoverSeconds, 0);
+  assert.equal(config.normalize({ ...saved, ui: { ...saved.ui, exeCoverSeconds: 300 } }).ui.exeCoverSeconds, config.defaults().ui.exeCoverSeconds);
+  assert.equal(config.normalize({ ...saved, ui: { ...saved.ui, exeCoverWaitFullDuration: true } }).ui.exeCoverWaitFullDuration, true);
   assert.equal(normalized.pc.custom[0].shelf, 'n64');
   assert.equal(normalized.pc.custom[0].args, '--fullscreen');
   assert.equal(normalized.pc.custom[1].shelf, undefined);
