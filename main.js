@@ -1975,10 +1975,11 @@ async function launchPcEntry(g) { coversForGame(); /* (beta.14) */
   busyCheck();
   launching = true; try { await taskbarHide(); } finally { launching = false; } // (beta.6)
   let r; try { r = launcher.launchApp(g.exe, onExit, launcher.buildArgs(g.args || '', '')); } catch (e) { taskbarShow('the game did not start'); throw e; } runKind = 'app'; pendingPower = null; launcher.setRunningName(g.title); log('PC launch:', g.source, g.title);
-  const consoleDef = g.source === 'custom' && CONSOLES.find(c => c.id === g.shelf);
+  const consoleDef = pcgames.consoleForCustomExe(g, CONSOLES);
   if (cfg.ui.homeMenu !== false) homemenu.begin({ systemId: consoleDef ? consoleDef.id : 'pc', exe: g.exe,
     systemName: consoleDef ? consoleDef.name : g.source === 'quiver' ? 'Quiver' : g.source === 'gog' ? 'GOG' : 'Custom', title: g.title, hotkeys: {} });
-  if (seamless.on()) historyTrack(g.id); // (beta.12, Seamless play: its playtime too)
+  if (consoleDef) historyStart(g.id); // console-assigned executables use the console game's history id and session tracking
+  else if (seamless.on()) historyTrack(g.id); // (beta.12, Seamless play: its playtime too)
   watchPad({ mouse: false, appPid: r.pid, fullscreenKey: null, home: true });
   return { ...r, cover: coverWhileStarting(10) };
 }

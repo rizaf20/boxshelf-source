@@ -286,6 +286,10 @@ function placeCustom(shelves, games, systems, pcGame) {
   }
   return { toPc, onCustom };
 }
+function consoleForCustomExe(game, systems) {
+  if (!game || game.source !== 'custom' || !/\.exe$/i.test(String(game.exe || ''))) return null;
+  return (systems || []).find(system => system && system.id === game.shelf) || null;
+}
 // a title from a program's name: "SoH-Ship-of-Harkinian.exe" → "SoH Ship of Harkinian"
 const titleFromExe = exe => path.basename(String(exe || ''), path.extname(String(exe || ''))).replace(/[_\-.]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Game';
 
@@ -368,4 +372,4 @@ function mergeGameInfo(preferred, fallback) {
 }
 
 module.exports = { init, epicGames, quiverGames, quiverFind, quiverRoots, customGames, placeCustom, titleFromExe, mainExe, remember, byId, all, steamIdOf, matchSteam, steamMatch, steamSearch, EPIC_DIR,
-  mergeGameInfo, storeGames, gogGames, ubisoftGames, eaGames, xboxGames, parseReg, xboxRoots, eaFromDirs, xboxScan };
+  mergeGameInfo, consoleForCustomExe, storeGames, gogGames, ubisoftGames, eaGames, xboxGames, parseReg, xboxRoots, eaFromDirs, xboxScan };

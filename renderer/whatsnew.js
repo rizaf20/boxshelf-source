@@ -60,6 +60,7 @@ window.BS_WHATSNEW = [
         ["Hide console tabs", "Settings → Shelf → Console tabs lets you hide platforms from the top navigation without hiding their games from Home, My shelves, search or the museum."],
         ["PC back covers", "Choose a separate back-cover image for a PC game from its Box art picker. Steam and SteamGridDB automatic front covers continue to work independently."],
         ["PC game details and media", "PC and Custom game Details now show the same Overview and Media sections as console games. Steam screenshots and trailers appear when available, with LaunchBox screenshots and trailer links filling in missing Steam media."],
+        ["Console-assigned PC games", "Custom .exe games assigned to a console now record playtime and appear in Home's Continue & favorites, just like games launched through an emulator."],
         ["Fixed", "Your theme, sound and music stay chosen after a restart. Automatic shelves keep their rule. PCSX2's sign-in is found in a moved or translated Documents folder. A Steam library on a sleeping drive no longer freezes start-up. Video previews wait 5 seconds."]
       ] },
       { h: "Windows", items: [

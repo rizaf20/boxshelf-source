@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const config = require('../config');
-const { customGames, placeCustom, steamMatch, mergeGameInfo } = require('../pcgames');
+const { customGames, placeCustom, steamMatch, mergeGameInfo, consoleForCustomExe } = require('../pcgames');
 const steamart = require('../steamart');
 const paths = require('../paths');
 const { gameFromFile } = require('../scanner');
@@ -16,6 +16,9 @@ const exe = { id: 'custom-harkinian', source: 'custom', title: 'Ship of Harkinia
 const other = { id: 'custom-script', source: 'custom', title: 'Old launcher', exe: 'C:\\Games\\old-launcher.bat', shelf: 'n64' };
 const placed = placeCustom(shelves, [exe, other], systems, game => ({ kind: 'steam', ...game }));
 const game = shelves[0].games.find(item => item.id === exe.id);
+assert.equal(consoleForCustomExe(exe, systems), systems[0]);
+assert.equal(consoleForCustomExe({ ...exe, shelf: 'custom' }, systems), null);
+assert.equal(consoleForCustomExe({ ...exe, exe: 'C:\\Games\\old-launcher.bat' }, systems), null);
 assert.equal(game.kind, 'rom');
 assert.equal(game.directExe, true);
 assert.equal(game.file, exe.exe);
