@@ -161,11 +161,11 @@ function filterFn(v){
 }
 function arrange(){
   const keep=filterFn(filterBy),own=addsIndex();
-  allShelves.forEach(sh=>{if(sh.kind==="home"||!sh.items)return;if(!sh._base)sh._base=sh.items.slice();
+  allShelves.forEach(sh=>{if((sh.kind==="home"&&!sh.col)||!sh.items)return;if(!sh._base)sh._base=sh.items.slice();
     const B=addsInto(sh,own); /* (beta.14) + Add to…: the games added to this shelf, among its own by title */
     const idx=new Map(B.map((g,i)=>[g,i])),base=(a,b)=>idx.get(a)-idx.get(b);
     const by=(f,desc)=>(a,b)=>{const x=f(a),y=f(b);if(x==null&&y==null)return base(a,b);if(x==null)return 1;if(y==null)return -1;return (desc?y-x:x-y)||base(a,b)};
-    const cmp={year:by(yearOf),recent:by(g=>histOf(g)&&histOf(g).last||null,true),most:by(g=>histOf(g)&&histOf(g).ms||null,true),rating:by(ratingOf,true),
+    const cmp={az:(a,b)=>autoCmp(a,b)||base(a,b),year:by(yearOf),recent:by(g=>histOf(g)&&histOf(g).last||null,true),most:by(g=>histOf(g)&&histOf(g).ms||null,true),rating:by(ratingOf,true),
       genre:(a,b)=>{const x=genreOf(a),y=genreOf(b);if(x===y)return base(a,b);if(!x)return 1;if(!y)return -1;return x.localeCompare(y)}}[sortBy]||base;
     sh.items=[...B.filter(g=>!isGame(g)&&!g.tail),...B.filter(isGame).filter(keep).sort(cmp),...B.filter(g=>g.tail)]; // (beta.7: a tail tile, the Custom shelf's Add games, stays last)
   });
@@ -235,7 +235,7 @@ $("volBtn").addEventListener("click",()=>{const v=curVol();setVol(v>0?0:(volPrev
 
 function buildHome(){
   const favs=favSet(),seen=new Set(),items=[];
-  const all=[];allShelves.forEach((sh,i)=>{if(sh.kind==="home")return;(sh._base||sh.items).forEach(g=>{if(isGame(g)){g._shelf=i;all.push(g)}})});
+  const all=[];allShelves.forEach(sh=>{if(sh.kind==="home")return;(sh._base||sh.items).forEach(g=>{if(isGame(g))all.push(g)})});
   // (Android 0.3.2: Home shows the most played games, then the favourites; Windows keeps the most recent first)
   const hv=g=>HIST[g.id]||{},rank=ON_ANDROID?(a,b)=>(hv(b).ms||0)-(hv(a).ms||0)||(hv(b).count||0)-(hv(a).count||0)||(hv(b).last||0)-(hv(a).last||0):(a,b)=>HIST[b.id].last-HIST[a.id].last;
   all.filter(g=>HIST[g.id]&&HIST[g.id].count).sort(rank).slice(0,12).forEach(g=>{seen.add(g.id);items.push(g)});
@@ -253,7 +253,7 @@ function buildHome(){
     const its=c.ids.map(id=>byId.get(String(id))).filter(Boolean);if(!its.length)continue;
     STYLE[id]=STYLE[id]||STYLE.home||STYLE.media;WORDMARKS[id]=[String(c.name||"Collection"),"Your collection"];
     let sh=COLS.get(id);if(!sh){sh={id,kind:"home",col:true,name:"",games:[],items:[],hasEmulator:false};COLS.set(id,sh)}
-    sh.auto=false;sh.name=String(c.name||"Collection");sh.items=its;sh.games=its;cols.push(sh)}
+    sh.auto=false;sh.name=String(c.name||"Collection");sh.items=its;sh.games=its;sh._base=its.slice();sh._adds=null;cols.push(sh)}
   let list=allShelves.filter(s=>s!==HOME);
   const hiddenTabs=hiddenShelfTabs();list=list.filter(s=>((s.kind==="console"||s.id==="pc"||s.id==="custom")? !hiddenTabs.has(String(s.id)) : true));
   // Android: a console set up without any games yet (RetroArch alone can enable a dozen) gets no tab of its own; if that
@@ -261,6 +261,9 @@ function buildHome(){
   if(ON_ANDROID){const full=list.filter(hasGames);if(full.length)list=full}
   shelves=items.length?[HOME,...autos,...cols,...list]:[...autos,...cols,...list];
   if(typeof kidShelves==="function")shelves=kidShelves(shelves);
+  shelves.forEach((sh,i)=>{if(sh.kind==="home")return;(sh._base||sh.items||sh.games||[]).forEach(g=>{if(isGame(g))g._shelf=i})});
+  allShelves=shelves;
+  arrange();
   const i=shelves.indexOf(keep);sysIdx=i>=0?i:Math.min(sysIdx,Math.max(0,shelves.length-1));
 }
 // (beta.14) automatic shelves: cfg.ui.autoShelves {recent, most, playing, finished, never, genre}, each off until switched
@@ -278,7 +281,7 @@ function autoShelf(id,name,sub,its,ctx){STYLE[id]=STYLE[id]||STYLE.home||STYLE.m
   let sh=COLS.get(id);if(!sh){sh={id,kind:"home",col:true,name:"",games:[],items:[],hasEmulator:false};COLS.set(id,sh)}
   sh.auto=true;sh.name=name;
   if(sh===ctx.keep&&!homeThaw&&sh.items.length&&sh.items.every(g=>ctx.byId.get(String(g.id))===g))return sh;
-  if(!its.length)return null;sh.items=its;sh.games=its;return sh}
+  if(!its.length)return null;sh.items=its;sh.games=its;sh._base=its.slice();sh._adds=null;return sh}
 function autoRuleGames(r,U){const v=String(r.value||"");
   if(r.kind==="status"){const st=autoStatus();return U.filter(g=>st(g)===v).sort(autoCmp).slice(0,300)}
   if(r.kind==="never")return U.filter(g=>{const h=histOf(g);return !(h&&h.count)}).sort(autoCmp).slice(0,300);
@@ -318,8 +321,8 @@ function reHome(){if(!cfgInfo)return;const was=cur();homeThaw=true;try{buildHome
 function autoStatusChanged(){if(!cfgInfo||sysBusy())return;const a=autoOpts();
   if(!(a.playing===true||a.finished===true||((cfgInfo.config.ui.collections||[]).some(c=>c&&c.rule&&c.rule.kind==="status"))))return;
   buildHome();renderTabs()}
-function gameLine(g){const h=HIST[g.id],s=shelfFor(g),platform=g&&g.directExe&&(s&&(/^(custom|pc)$/i.test(s.id)))?"PC":(s?s.name:"");
-  const parts=[platform];if(h&&h.count)parts.push("played "+fmtDay(h.last/1000));else parts.push("Not played yet");if(isFav(g))parts.push("♥ Favorite");return parts.filter(Boolean)}
+function gameLine(g){const h=histOf(g),s=shelfFor(g),platform=g&&g.directExe&&(s&&(/^(custom|pc)$/i.test(s.id)))?"PC":(s?s.name:"");
+  const parts=[platform];if(h&&h.ms)parts.push(fmtPlay(h.ms)+" played");if(h&&h.last)parts.push("played "+fmtDay(h.last/1000));else if(!h||!h.count)parts.push("Not played yet");if(isFav(g))parts.push("♥ Favorite");return parts.filter(Boolean)}
 function homeLine(g){return gameLine(g)}
 async function toggleFav(){
   if((mode!=="browse"&&mode!=="details")||sysBusy())return; // the Home shelf appearing mid-switch would shift the shelves
@@ -5167,8 +5170,8 @@ window.Shelf={
   // (beta.9) Settings → Custom games: covers for every custom game (one by one in the picker, or the best match for each)
   pcCoverBatch:()=>setTimeout(()=>pcCoverBatch(),350),pcCoverAuto:()=>pcCoverAuto(),pcCoverUndo:()=>pcCoverUndo(),coverUndoCount:()=>coverUndo.length,
   // (beta.7) test hooks for the library pass: the filters on offer, picking one, the shelf's games and the one in view
-  _lib:{filters:()=>filterList(),filter:v=>pickSort(1,v),cur:()=>{const g=curGame();return g?{id:g.id,title:g.title,kind:g.kind}:null},
-    games:()=>(cur()?cur().items.filter(isGame):[]).map(g=>({id:g.id,year:yearOf(g),genres:genresOf(g)})),shelves:()=>shelves.map(s=>({id:s.id,name:s.name,col:!!s.col,ids:(s.items||[]).filter(isGame).map(g=>g.id),last:((s.items||[])[(s.items||[]).length-1]||{}).id||null,random:(s.items||[]).some(i=>i&&i.kind==="random")}))},
+  _lib:{filters:()=>filterList(),sort:v=>pickSort(0,v),filter:v=>pickSort(1,v),cur:()=>{const g=curGame();return g?{id:g.id,title:g.title,kind:g.kind}:null},
+    games:()=>(cur()?cur().items.filter(isGame):[]).map(g=>({id:g.id,title:g.title,year:yearOf(g),genres:genresOf(g)})),shelves:()=>shelves.map(s=>({id:s.id,name:s.name,col:!!s.col,ids:(s.items||[]).filter(isGame).map(g=>g.id),last:((s.items||[])[(s.items||[]).length-1]||{}).id||null,random:(s.items||[]).some(i=>i&&i.kind==="random")}))},
   // (beta.7) Settings changed your collections: their shelves are made again (the one you're on stays, if it still has games)
   previewStop:()=>{if(PV){pvStop();pvBackStop()}},setCollections:list=>{if(!cfgInfo||!Array.isArray(list))return;cfgInfo.config.ui.collections=list;reHome()},
   setHiddenShelves:list=>{if(!cfgInfo||!Array.isArray(list))return;cfgInfo.config.ui.hiddenShelves=list.map(String);reHome()},

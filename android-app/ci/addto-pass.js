@@ -87,11 +87,15 @@ module.exports = async function addToPass({ browser, base, check, newPage, OUT }
       const favs = async () => (await cfg()).ui.favorites || [];
       await pick('fav', async () => (await favs()).includes('gc0')); out.favIn = (await favs()).includes('gc0'); out.favText = ((__at.opt('fav') || {}).textContent || ''); out.favCur = cur('fav');
       await pick('fav', async () => !(await favs()).includes('gc0')); out.favOut = !(await favs()).includes('gc0'); out.favText2 = ((__at.opt('fav') || {}).textContent || '');
-      { const k = await cfg(); k.ui.collections[0].ids = ['sw0']; await window.boxshelf.saveConfig(k); await Shelf.refresh(true); await w(900); }
-      Shelf._find.go('sw0'); await w(900); out.swNativeRatio = ratio();
+      { const k = await cfg(); k.ui.collections[0].ids = ['sw0','gc0']; await window.boxshelf.saveConfig(k); await Shelf.refresh(true); await w(900); }
+      out.swFind = Shelf._find.go('sw0'); await w(900); out.swNativeRatio = ratio();
       out.swNativeMeta = document.getElementById('gMeta').textContent;
+      out.swFound = Shelf._adds.on();
       out.swCollection = Shelf._adds.go('col-t1', 'sw0'); await w(900); out.swCollectionRatio = ratio();
       out.swCollectionMeta = document.getElementById('gMeta').textContent;
+      Shelf._lib.sort('az'); await w(300); out.collectionAZ = Shelf._lib.games().map(g => g.title);
+      Shelf._lib.filter('dec:2000'); await w(300); out.collection2000 = Shelf._lib.games().map(g => g.title);
+      Shelf._lib.filter('all'); await w(300);
       Shelf._find.go('sw0'); await w(900); await openAdd();
       await pick('sh:wii', async () => (((await cfg()).ui.shelfAdds || {}).wii || []).includes('sw0'));
       out.swOtherShelf = Shelf._adds.go('wii', 'sw0'); await w(900); out.swOtherShelfRatio = ratio();
@@ -102,10 +106,13 @@ module.exports = async function addToPass({ browser, base, check, newPage, OUT }
       c.opened && c.colText === 'Couch' && c.colIn.includes('gc0') && c.colCur === true && c.colShelf === true && c.onCol.shelf === 'col-t1' && !c.colOut.includes('gc0') && c.colCur2 === false, JSON.stringify(c).slice(0, 500));
     check('Every shelf keeps a game\'s originating platform case dimensions (Switch cover fit matches its native shelf, My shelf and added shelf)',
       c.swCollection && c.swOtherShelf && Math.abs(c.swNativeRatio - c.swExpectedRatio) < .005 && Math.abs(c.swCollectionRatio - c.swExpectedRatio) < .005 && Math.abs(c.swOtherShelfRatio - c.swExpectedRatio) < .005,
-      JSON.stringify({ native: c.swNativeRatio, collection: c.swCollectionRatio, addedShelf: c.swOtherShelfRatio, added: c.swOtherShelf, expected: c.swExpectedRatio }));
+      JSON.stringify({ swFind: c.swFind, swFound: c.swFound, native: c.swNativeRatio, collection: c.swCollectionRatio, addedShelf: c.swOtherShelfRatio, added: c.swOtherShelf, expected: c.swExpectedRatio }));
     check('Every shelf shows platform and play history, with no ROM file size or format text',
       ['swNativeMeta','swCollectionMeta','swOtherShelfMeta'].every(k => /Switch/i.test(c[k]) && !/\b(EXE|ROM|XCI|NSP|MB|GB|KB)\b/i.test(c[k])),
       JSON.stringify({ native: c.swNativeMeta, collection: c.swCollectionMeta, addedShelf: c.swOtherShelfMeta }));
+    check('My shelves apply A-Z sorting and decade filters',
+      c.collectionAZ && c.collectionAZ[0] === 'Aether Drift' && c.collectionAZ.indexOf('Aether Drift') < c.collectionAZ.indexOf('Astra Vanguard') && c.collection2000.length === 0,
+      JSON.stringify({ az: c.collectionAZ, dec2000: c.collection2000 }));
     check('Add to… → Favourites toggles (♡ / ✓)', c.favIn && /^✓ Favourites/.test(c.favText) && c.favCur === true && c.favOut && /^♡ Favourites/.test(c.favText2), JSON.stringify({ favIn: c.favIn, t: c.favText, out: c.favOut, t2: c.favText2 }));
 
     // ---- + New shelf…: Settings' New shelf row, typed into, makes the shelf with the game ----
