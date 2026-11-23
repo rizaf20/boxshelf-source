@@ -101,6 +101,18 @@ module.exports = async function addToPass({ browser, base, check, newPage, OUT }
       out.swOtherShelf = Shelf._adds.go('wii', 'sw0'); await w(900); out.swOtherShelfRatio = ratio();
       out.swOtherShelfMeta = document.getElementById('gMeta').textContent;
       out.swExpectedRatio = Shelf.caseShape('sw').ratio;
+      await Shelf.refresh(true); await w(500); await Shelf.refresh(true); await w(700);
+      out.collectionShelfCount = Shelf._lib.shelves().filter(s => s.id === 'col-t1').length;
+      { const k = await cfg(); k.ui.collections = []; await window.boxshelf.saveConfig(k); await Shelf.refresh(true); await w(700); }
+      out.deletedCollectionCount = Shelf._lib.shelves().filter(s => s.id === 'col-t1').length;
+      { const k = await cfg(); k.ui.collections = [{ id: 't1', name: 'Couch', ids: ['sw0','gc0'] }]; await window.boxshelf.saveConfig(k); await Shelf.refresh(true); await w(700); }
+      out.recreatedCollectionCount = Shelf._lib.shelves().filter(s => s.id === 'col-t1').length;
+      { const k = await cfg(); k.ui.favorites = ['gc0','sw0']; await window.boxshelf.saveConfig(k); await Shelf.refresh(true); await w(700); }
+      const homeTab = [...document.querySelectorAll('#tabs .tab')].find(b => b.textContent.trim() === 'Home');
+      if (homeTab) { homeTab.click(); await w(700); }
+      Shelf._lib.sort('az'); await w(300); Shelf._lib.filter('dec:1990'); await w(300); out.home1990 = Shelf._lib.games().map(g => ({ title: g.title, year: g.year }));
+      Shelf._lib.filter('dec:2000'); await w(300); out.home2000 = Shelf._lib.games().map(g => g.title);
+      Shelf._lib.filter('all'); await w(300);
       await close(); return out; });
     check('Add to… → a My shelf: on it (saved, ticked, its shelf shows the game), and off again',
       c.opened && c.colText === 'Couch' && c.colIn.includes('gc0') && c.colCur === true && c.colShelf === true && c.onCol.shelf === 'col-t1' && !c.colOut.includes('gc0') && c.colCur2 === false, JSON.stringify(c).slice(0, 500));
@@ -113,6 +125,12 @@ module.exports = async function addToPass({ browser, base, check, newPage, OUT }
     check('My shelves apply A-Z sorting and decade filters',
       c.collectionAZ && c.collectionAZ[0] === 'Aether Drift' && c.collectionAZ.indexOf('Aether Drift') < c.collectionAZ.indexOf('Astra Vanguard') && c.collection2000.length === 0,
       JSON.stringify({ az: c.collectionAZ, dec2000: c.collection2000 }));
+    check('Refreshing My shelves does not duplicate collection tabs',
+      c.collectionShelfCount === 1 && c.deletedCollectionCount === 0 && c.recreatedCollectionCount === 1,
+      JSON.stringify({ count: c.collectionShelfCount, afterDelete: c.deletedCollectionCount, afterRecreate: c.recreatedCollectionCount }));
+    check('Home also applies A-Z sorting and decade filters',
+      c.home1990 && c.home1990.length === 2 && c.home1990.every(g => g.year >= 1990 && g.year < 2000) && c.home1990[0].title === 'Aether Drift' && c.home2000.length === 0,
+      JSON.stringify({ home1990: c.home1990, home2000: c.home2000 }));
     check('Add to… → Favourites toggles (♡ / ✓)', c.favIn && /^✓ Favourites/.test(c.favText) && c.favCur === true && c.favOut && /^♡ Favourites/.test(c.favText2), JSON.stringify({ favIn: c.favIn, t: c.favText, out: c.favOut, t2: c.favText2 }));
 
     // ---- + New shelf…: Settings' New shelf row, typed into, makes the shelf with the game ----

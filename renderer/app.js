@@ -49,7 +49,7 @@ const cur=()=>shelves[sysIdx];
 const st=()=>STYLE[(cur()||{}).id]||STYLE.media; // no shelves yet (empty library): the neutral look, never a TypeError
 const shelfFor=g=>(g&&g._shelf!=null&&allShelves[g._shelf])||cur();
 const stOf=g=>STYLE[shelfFor(g).id]||STYLE.media;
-let allShelves=[];
+let allShelves=[],sourceShelves=[];
 // Android (the Thor's small screen): the console bar only lists shelves that have games (plus Home and Apps), with short
 // names, and glides with a transform instead of scrolling (see placePill). Windows keeps every shelf as before.
 const ON_ANDROID=!!(window.bsPlatform&&bsPlatform.os==="android");
@@ -161,8 +161,8 @@ function filterFn(v){
 }
 function arrange(){
   const keep=filterFn(filterBy),own=addsIndex();
-  allShelves.forEach(sh=>{if((sh.kind==="home"&&!sh.col)||!sh.items)return;if(!sh._base)sh._base=sh.items.slice();
-    const B=addsInto(sh,own); /* (beta.14) + Add to…: the games added to this shelf, among its own by title */
+  allShelves.forEach(sh=>{if((sh.kind==="home"&&!sh.col&&sh!==HOME)||!sh.items)return;if(!sh._base)sh._base=sh.items.slice();
+    const B=sh===HOME?sh._base:addsInto(sh,own); /* (beta.14) + Add to…: the games added to this shelf, among its own by title */
     const idx=new Map(B.map((g,i)=>[g,i])),base=(a,b)=>idx.get(a)-idx.get(b);
     const by=(f,desc)=>(a,b)=>{const x=f(a),y=f(b);if(x==null&&y==null)return base(a,b);if(x==null)return 1;if(y==null)return -1;return (desc?y-x:x-y)||base(a,b)};
     const cmp={az:(a,b)=>autoCmp(a,b)||base(a,b),year:by(yearOf),recent:by(g=>histOf(g)&&histOf(g).last||null,true),most:by(g=>histOf(g)&&histOf(g).ms||null,true),rating:by(ratingOf,true),
@@ -196,7 +196,7 @@ function addsShelves(list){const M=addsMap();if(!M)return list;let out=list;
   return out}
 // re-sort/filter and rebuild, keeping the selected game in view when it's still on the shelf
 function applyArrange(){
-  const keepG=curGame();arrange();buildHome();if(!cur())return;
+  const keepG=curGame();buildHome();if(!cur())return;
   const i=keepG?cur().items.indexOf(keepG):-1;sel=i>=0?i:Math.max(0,cur().items.findIndex(isGame));if(sel<0)sel=0;flipped=false;spin=0;spinT=0;build();
 }
 /* the Sort panel: two rows of options, applied live; ←/→ picks, ↑/↓ changes row, A/B/Esc closes */
@@ -205,8 +205,8 @@ function renderSort(){
   const mk=(host,list,cur,row)=>{const h=$(host);h.innerHTML="";list.forEach(([v,l])=>{const b=document.createElement("button");b.type="button";b.className="sp-opt"+(v===cur?" on":"");b.textContent=l;b.addEventListener("click",()=>{spRow=row;pickSort(row,v)});h.append(b)})};
   mk("spSort",SORTS,sortBy,0);mk("spFilter",filterList(),filterBy,1);
   document.querySelectorAll("#sortPanel .sp-row").forEach(r=>r.classList.toggle("active",+r.dataset.row===spRow));
-  const s=cur(),n=s&&s.kind!=="home"?s.items.filter(isGame).length:null;
-  $("spFoot").textContent=(s&&s.kind==="home"?"Home keeps its own order. ":n!=null?`${n} game${n===1?"":"s"} on ${s.name} · `:"")+(showPad()?`${padWord("L1")} / ${padWord("R1")} jump between sections`:"Z / C jump between sections")+" · applies to every shelf and the museum";
+  const s=cur(),n=s?(s===HOME?(s._base||s.items).filter(isGame).length:s.items.filter(isGame).length):null;
+  $("spFoot").textContent=(n!=null?`${n} game${n===1?"":"s"} on ${s.name} · `:"")+(showPad()?`${padWord("L1")} / ${padWord("R1")} jump between sections`:"Z / C jump between sections")+" · applies to every shelf and the museum";
 }
 function pickSort(row,v){
   if(row===0){if(sortBy===v)return;sortBy=v}else{if(filterBy===v)return;filterBy=v}
@@ -235,12 +235,12 @@ $("volBtn").addEventListener("click",()=>{const v=curVol();setVol(v>0?0:(volPrev
 
 function buildHome(){
   const favs=favSet(),seen=new Set(),items=[];
-  const all=[];allShelves.forEach(sh=>{if(sh.kind==="home")return;(sh._base||sh.items).forEach(g=>{if(isGame(g))all.push(g)})});
+  const all=[];sourceShelves.forEach(sh=>{if(sh.kind==="home")return;(sh._base||sh.items).forEach(g=>{if(isGame(g))all.push(g)})});
   // (Android 0.3.2: Home shows the most played games, then the favourites; Windows keeps the most recent first)
   const hv=g=>HIST[g.id]||{},rank=ON_ANDROID?(a,b)=>(hv(b).ms||0)-(hv(a).ms||0)||(hv(b).count||0)-(hv(a).count||0)||(hv(b).last||0)-(hv(a).last||0):(a,b)=>HIST[b.id].last-HIST[a.id].last;
   all.filter(g=>HIST[g.id]&&HIST[g.id].count).sort(rank).slice(0,12).forEach(g=>{seen.add(g.id);items.push(g)});
   all.filter(g=>favs.has(g.id)&&!seen.has(g.id)).sort((a,b)=>a.title.localeCompare(b.title)).forEach(g=>items.push(g));
-  HOME.items=items;HOME.games=items;
+  HOME.items=items;HOME.games=items;HOME._base=items.slice();
   // (beta.7) your collections (Details → Collections; cfg.ui.collections [{id,name,ids}]): shelves of your own right after
   // Home, mixing consoles the way Home does (each case keeps its own console's look); the games in the order added
   const cols=[],byId=new Map(all.map(g=>[String(g.id),g])),keep=cur(),U=autoNeeded()?[...new Set(byId.values())]:null,ctx={keep,byId};
@@ -254,7 +254,7 @@ function buildHome(){
     STYLE[id]=STYLE[id]||STYLE.home||STYLE.media;WORDMARKS[id]=[String(c.name||"Collection"),"Your collection"];
     let sh=COLS.get(id);if(!sh){sh={id,kind:"home",col:true,name:"",games:[],items:[],hasEmulator:false};COLS.set(id,sh)}
     sh.auto=false;sh.name=String(c.name||"Collection");sh.items=its;sh.games=its;sh._base=its.slice();sh._adds=null;cols.push(sh)}
-  let list=allShelves.filter(s=>s!==HOME);
+  let list=sourceShelves.filter(s=>s!==HOME);
   const hiddenTabs=hiddenShelfTabs();list=list.filter(s=>((s.kind==="console"||s.id==="pc"||s.id==="custom")? !hiddenTabs.has(String(s.id)) : true));
   // Android: a console set up without any games yet (RetroArch alone can enable a dozen) gets no tab of its own; if that
   // would leave nothing at all, they stay so the shelf can still say what to do next
@@ -909,9 +909,9 @@ function renderTabs(){
     shelves.forEach((s,i)=>{const b=document.createElement("button");b.type="button";b.className="tab";const short=ON_ANDROID&&TAB_SHORT[s.id];b.textContent=short||s.name;if(short){b.title=s.name;b.setAttribute("aria-label",s.name)}b.addEventListener("click",()=>{if(tabDragged)return;setInput("pointer");setSystem(i)});box.appendChild(b)})}
   t.querySelectorAll(".tab").forEach((b,i)=>b.classList.toggle("on",i===sysIdx));placePill();
   const s=cur();
-  if(s){renderWordmark($("sysWord"),s.id,s.name,"sys-word ");const n=s.games.length,shown=s.kind==="home"?n:s.items.filter(isGame).length;const what=s.kind==="apps"?(n===1?"app":"apps"):s.kind==="steam"?"installed":(n===1?"game":"games");
-    const extra=s.kind==="home"||s.kind==="apps"?"":[filterBy!=="all"?`${filterName(filterBy).toLowerCase()}`:"",SORT_WORD[sortBy]].filter(Boolean).join(" · ");
-    $("sysCount").textContent=(filterBy!=="all"&&s.kind!=="home"&&s.kind!=="apps"?`${shown} of ${n} ${what}`:`${n} ${what}`)+(extra?" · "+extra:"")}
+  if(s){renderWordmark($("sysWord"),s.id,s.name,"sys-word ");const n=s===HOME?(s._base||s.items).filter(isGame).length:s.games.length,shown=s.items.filter(isGame).length,what=s.kind==="apps"?(n===1?"app":"apps"):s.kind==="steam"?"installed":(n===1?"game":"games");
+    const extra=s.kind==="apps"?"":[filterBy!=="all"?`${filterName(filterBy).toLowerCase()}`:"",SORT_WORD[sortBy]].filter(Boolean).join(" · ");
+    $("sysCount").textContent=(filterBy!=="all"&&s.kind!=="apps"?`${shown} of ${n} ${what}`:`${shown} ${what}`)+(extra?" · "+extra:"")}
   else{$("sysCount").textContent="";$("counter").textContent=""}
   applyLogo();renderHints();
 }
@@ -4623,7 +4623,7 @@ if(api&&api.onHistoryChanged)api.onHistoryChanged(()=>loadHistory());
 // the page is zoomed up on screens taller than 1080 (main.js applyScale); the 3D views keep full sharpness with it
 // the 3D views cap pixels per 1080p-sized pixel: the whole page zoom counts (4K auto × the Interface size setting), else 115 / 130 % renders soft
 window.BS_AUTOZOOM=1;if(api&&api.onUiScale)api.onUiScale(d=>{const a=Math.max(1,Math.min(2.6,+(d&&d.zoom)||+(d&&d.auto)||1));if(a===window.BS_AUTOZOOM)return;window.BS_AUTOZOOM=a;try{window.dispatchEvent(new Event("resize"))}catch{}});
-function loadHistory(){if(api.history)api.history().then(h=>{HIST=h||{};bootMark("hist");if((/recent|most/.test(sortBy)||/played/.test(filterBy))&&cur()&&cur().kind!=="home"&&(mode==="browse"||mode==="details")){applyArrange();return}if(/recent|most/.test(sortBy)||/played/.test(filterBy))arrange();const onHome=cur()===HOME,had=shelves.includes(HOME),keep=curGame();buildHome();if(onHome||had!==shelves.includes(HOME)){if(onHome&&shelves.includes(HOME)){const i=HOME.items.indexOf(keep);sel=i>=0?i:Math.max(0,Math.min(sel,HOME.items.length-1));build()}else if(onHome&&shelves.length){/* Home went away (play history cleared, no favourites): land on the first shelf */sysIdx=0;sel=Math.max(0,cur().items.findIndex(isGame));flipped=false;closeDetails(true);build();brandIn(1);tuneTo(cur());save()}else renderTabs()}if(mode==="details")fillDetails()}).then(homeStartCheck).catch(()=>{})}
+function loadHistory(){if(api.history)api.history().then(h=>{HIST=h||{};bootMark("hist");if((/recent|most/.test(sortBy)||/played/.test(filterBy))&&cur()&&cur()!==HOME&&(mode==="browse"||mode==="details")){applyArrange();return}if(/recent|most/.test(sortBy)||/played/.test(filterBy))arrange();const onHome=cur()===HOME,had=shelves.includes(HOME),keep=curGame();buildHome();if(onHome||had!==shelves.includes(HOME)){if(onHome&&shelves.includes(HOME)){const i=HOME.items.indexOf(keep);sel=i>=0?i:Math.max(0,Math.min(sel,HOME.items.length-1));build()}else if(onHome&&shelves.length){/* Home went away (play history cleared, no favourites): land on the first shelf */sysIdx=0;sel=Math.max(0,cur().items.findIndex(isGame));flipped=false;closeDetails(true);build();brandIn(1);tuneTo(cur());save()}else renderTabs()}if(mode==="details")fillDetails()}).then(homeStartCheck).catch(()=>{})}
 // Open into → Home: at start-up the Home shelf may only appear once the play history is in (it lists recent games)
 function homeStartCheck(){if(openInto!=="home-wait")return;openInto="done";const i=shelves.indexOf(HOME);if(i<0||i===sysIdx||mode!=="browse"||sysBusy()||lastInputAt>0)return;
   if(!revealedAt){sysIdx=i;sel=0;flipped=false;spin=0;spinT=0;build();tuneTo(cur())}else setSystem(i)}
@@ -4740,7 +4740,7 @@ async function refresh(keepPlace,lib){
   pendingLib=null;pendingRefresh=false; // this refresh is newer than anything waiting
   const prevId=cur()&&cur().id,prevItem=rawItem()&&rawItem().id; // where you are *now*, not when the scan started. (beta.12) The tile itself, not a Surprise me pick showing on it: that put you on the picked game's own case (or slot 0)
   try{shelves=prepare(fresh)}catch(err){toast(err.message);shelves=[]}
-  allShelves=shelves;setTimeout(sendShelfInfo,0);sortBy=(cfgInfo&&cfgInfo.config.ui.sort)||"az";filterBy=(cfgInfo&&cfgInfo.config.ui.filter)||"all";arrange();buildHome();
+  sourceShelves=shelves.slice();allShelves=sourceShelves;setTimeout(sendShelfInfo,0);sortBy=(cfgInfo&&cfgInfo.config.ui.sort)||"az";filterBy=(cfgInfo&&cfgInfo.config.ui.filter)||"all";arrange();buildHome();
   if(!keepPlace&&openInto===null){const o=cfgInfo&&cfgInfo.config.ui.openInto;openInto=o==="home"||o==="museum"?o:"last"}
   const homeStart=!keepPlace&&openInto==="home"; // Open into → Home shelf (it's the first shelf whenever it exists)
   const want=keepPlace?prevId:homeStart?"home":saved.sys;
