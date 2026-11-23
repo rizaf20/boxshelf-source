@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const config = require('../config');
-const { customGames, placeCustom, steamMatch } = require('../pcgames');
+const { customGames, placeCustom, steamMatch, mergeGameInfo } = require('../pcgames');
 const steamart = require('../steamart');
 const paths = require('../paths');
 const { gameFromFile } = require('../scanner');
@@ -64,6 +64,15 @@ try {
   assert.equal(covers.LAUNCHBOX.pc, 'Windows');
   assert.equal(steamMatch([{ id: 1, name: 'Ported Game' }, { id: 2, name: 'Ported Game Deluxe' }], 'Ported Game', true).id, 1);
   assert.equal(steamMatch([{ id: 2, name: 'Ported Game Deluxe' }], 'Ported Game', true), null);
+  const mergedInfo = mergeGameInfo(
+    { overview: 'Steam summary', shots: ['https://steam.test/one.jpg'], dev: 'Steam studio' },
+    { overview: 'LaunchBox summary', shots: ['https://lb.test/two.jpg', 'https://steam.test/one.jpg'], video: 'https://youtube.test/trailer', bg: 'https://lb.test/fanart.jpg' }
+  );
+  assert.equal(mergedInfo.overview, 'Steam summary');
+  assert.equal(mergedInfo.dev, 'Steam studio');
+  assert.deepEqual(mergedInfo.shots, ['https://steam.test/one.jpg', 'https://lb.test/two.jpg']);
+  assert.equal(mergedInfo.video, 'https://youtube.test/trailer');
+  assert.equal(mergedInfo.bg, 'https://lb.test/fanart.jpg');
   let requests = 0;
   steamart.init(path.join(temp, 'steam-info'), () => {}, async () => {
     requests++;

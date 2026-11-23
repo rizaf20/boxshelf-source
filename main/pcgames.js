@@ -350,5 +350,22 @@ async function steamSearch(term, exact) {
   const want = norm(t); return items.filter(x => norm(x.name) === want).slice(0, 3);
 }
 
+function mergeGameInfo(preferred, fallback) {
+  if ((!preferred || typeof preferred !== 'object') && (!fallback || typeof fallback !== 'object')) return null;
+  const out = {};
+  for (const source of [fallback, preferred]) {
+    if (!source || typeof source !== 'object') continue;
+    for (const [key, value] of Object.entries(source)) {
+      if (key !== 'shots' && value != null && value !== '') out[key] = value;
+    }
+  }
+  const shots = [
+    ...(preferred && Array.isArray(preferred.shots) ? preferred.shots : []),
+    ...(fallback && Array.isArray(fallback.shots) ? fallback.shots : [])
+  ].filter(url => typeof url === 'string' && url);
+  if (shots.length) out.shots = [...new Set(shots)];
+  return Object.keys(out).length ? out : null;
+}
+
 module.exports = { init, epicGames, quiverGames, quiverFind, quiverRoots, customGames, placeCustom, titleFromExe, mainExe, remember, byId, all, steamIdOf, matchSteam, steamMatch, steamSearch, EPIC_DIR,
-  storeGames, gogGames, ubisoftGames, eaGames, xboxGames, parseReg, xboxRoots, eaFromDirs, xboxScan };
+  mergeGameInfo, storeGames, gogGames, ubisoftGames, eaGames, xboxGames, parseReg, xboxRoots, eaFromDirs, xboxScan };

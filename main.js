@@ -756,7 +756,7 @@ async function buildLibrary() {
   if (steamGiven && !isMainSteam(steamGiven) && steamMain === undefined) { steamMain = null; try { const p = await findSteam(); if (p && steamRoot(p) && isMainSteam(steamRoot(p))) { steamMain = p; log('Steam: the folder set is a library; using Steam\'s own folder for the list of libraries'); } } catch {} }
   if (steamUp && cfg.steam.enabled && cfg.steam.path) {
     // Steam's own cached art first, then anything Boxshelf fetched from the Steam store for games Steam has no cover for
-    pcShelf = (await scanSteamSafe(cfg.steam.path, { hideTools: cfg.steam.hideTools !== false, log, mainPath: steamMain || '' })).map(g => { const l = steamart.local(g.appid); return { ...g, ...(ownTitle(g.id) ? { title: ownTitle(g.id), fileTitle: g.title } : {}), info: steamart.gameInfo(g.appid), art: { front: fileUrl(pccovers.cover(g.id) || g.art.front || l.front), back: fileUrl(pccovers.back(g.id)), hero: fileUrl(g.art.hero || l.hero) } }; }); // (beta.5: a cover chosen in the picker wins)
+    pcShelf = (await scanSteamSafe(cfg.steam.path, { hideTools: cfg.steam.hideTools !== false, log, mainPath: steamMain || '' })).map(g => { const l = steamart.local(g.appid), title = ownTitle(g.id) || g.title, steamInfo = steamart.gameInfo(g.appid), lb = covers.gameInfo('pc', title); return { ...g, ...(title !== g.title ? { title, fileTitle: g.title } : {}), info: moreShotsInfo('pc', g, pcgames.mergeGameInfo(steamInfo, lb)), art: { front: fileUrl(pccovers.cover(g.id) || g.art.front || l.front), back: fileUrl(pccovers.back(g.id)), hero: fileUrl(g.art.hero || l.hero) } }; }); // (beta.5: a cover chosen in the picker wins)
   }
   // (beta.4) Epic's installs join the PC shelf; Quiver Launcher's apps and games added by hand get the Custom shelf. They
   // are PC games with a source (kind 'steam' keeps every shelf feature); covers come from the Steam app their title
@@ -772,9 +772,9 @@ async function buildLibrary() {
   // (Steam art by title only for Epic's store games: a recomp or a program added by hand often shares its name with an
   // unrelated Steam game, "Quarantine" got a puzzle game's cover; they keep the made-up case)
   const pcGame = g => { const sid = STORE_SRC.has(g.source) || g.source === 'custom' || g.source === 'quiver' ? pcgames.steamIdOf(g.title) : null, l = sid ? steamart.local(sid) : {};
-    const lb = g.source === 'custom' || g.source === 'quiver' ? covers.gameInfo('pc', g.title) : null;
+    const lb = covers.gameInfo('pc', g.title);
     const steamInfo = sid ? steamart.gameInfo(sid) : null;
-    const info = moreShotsInfo('pc', g, steamInfo || lb);
+    const info = moreShotsInfo('pc', g, pcgames.mergeGameInfo(steamInfo, lb));
     return { kind: 'steam', source: g.source, id: g.id, title: g.title, ...(sid ? { steamAppId: String(sid) } : {}), ...(info ? { info } : {}), art: { front: fileUrl(pccovers.cover(g.id) || l.front), back: fileUrl(pccovers.back(g.id)), hero: fileUrl(l.hero), icon: g.icon || undefined } }; };
   // (beta.10) a game added by hand can be moved to the PC shelf (Settings → Custom games → the game → Shelf); (beta.14) or
   // to any console's shelf (one is made for it if that console has none); an id that isn't a console stays on Custom
