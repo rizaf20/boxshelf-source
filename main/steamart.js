@@ -7,12 +7,13 @@ const path = require('path');
 const { net } = require('electron');
 const { isFile } = require('./paths');
 
-let dir = null, infoFile = null, info = {}, log = () => {};
+let dir = null, infoFile = null, info = {}, log = () => {}, fetchFn = null;
 const tried = new Set();
 const MONTH = 30 * 864e5, RETRY = 7 * 864e5;
 
-function init(dataDir, logger) {
+function init(dataDir, logger, fetcher) {
   dir = path.join(dataDir, 'steam-art'); infoFile = path.join(dataDir, 'steam-info.json'); if (logger) log = logger;
+  fetchFn = typeof fetcher === 'function' ? fetcher : null;
   try { info = JSON.parse(fs.readFileSync(infoFile, 'utf8')) || {}; } catch { info = {}; }
 }
 const asset = (id, name) => [
@@ -48,7 +49,7 @@ function gameInfo(appid) {
 }
 async function fetchInfo(appid) {
   try {
-    const r = await net.fetch(`https://store.steampowered.com/api/appdetails?appids=${appid}&l=english`, { headers: { 'User-Agent': 'Boxshelf' }, cache: 'no-store', signal: AbortSignal.timeout(20000) });
+    const r = await (fetchFn || net.fetch)(`https://store.steampowered.com/api/appdetails?appids=${appid}&l=english`, { headers: { 'User-Agent': 'Boxshelf' }, cache: 'no-store', signal: AbortSignal.timeout(20000) });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const j = (await r.json())[appid];
     if (!j || !j.success || !j.data) { info[appid] = { ok: false, at: Date.now() }; return; }
@@ -61,6 +62,24 @@ async function fetchInfo(appid) {
       overview: String(d.short_description || '').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").slice(0, 1200) || undefined,
       shots: (d.screenshots || []).slice(0, 12).map(s => s.path_full).filter(u => /^https:\/\//.test(u)), bg: /^https:\/\//.test(d.background_raw || '') ? d.background_raw : null };
   } catch (e) { log('steam info', appid, e.message); }
+}
+
+// Fetch store details independently of automatic artwork downloads. Custom PC games may use Steam metadata
+// even when the player has turned off automatic cover fetching.
+async function fillInfo(games) {
+  if (!infoFile) return 0;
+  let changed = 0, dirty = false;
+  const unique = new Map();
+  for (const g of Array.isArray(games) ? games : []) if (g && /^\d{1,10}$/.test(String(g.appid || ''))) unique.set(String(g.appid), g);
+  for (const [id] of unique) {
+    const old = info[id];
+    if (old && Date.now() - old.at <= (old.ok ? MONTH : RETRY)) continue;
+    await fetchInfo(id);
+    if (info[id] !== old) { dirty = true; if (info[id] && info[id].ok) changed++; }
+    await new Promise(r => setTimeout(r, 350));
+  }
+  if (dirty) { try { fs.writeFileSync(infoFile + '.tmp', JSON.stringify(info)); fs.renameSync(infoFile + '.tmp', infoFile); } catch {} }
+  return changed;
 }
 
 // Fill in covers and info for the installed Steam games; resolves to { covers, other }: new covers (worth a toast) and
@@ -90,4 +109,4 @@ async function fill(games) {
   return { covers, other };
 }
 
-module.exports = { init, local, gameInfo, fill };
+module.exports = { init, local, gameInfo, fillInfo, fill };

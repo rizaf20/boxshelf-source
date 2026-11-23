@@ -6,9 +6,8 @@
 //     link, so its sign-in, cloud saves and overlay work as usual.
 //   - Quiver 3 keeps apps.json + settings.json beside its program (portable) and the games in Apps\<folder>; Quiver 4
 //     keeps library.json / installs.json / apps-folder.json in %APPDATA%\com.quiverlauncher.app. Read only, never written.
-//   - Covers: an Epic game's title is matched once to a Steam app (the store's search) and Steam's own art is used
-//     (steamart.js); only while box art downloads are on. Quiver's and hand-added games aren't matched (a recomp often
-//     shares its name with an unrelated Steam game) and keep Boxshelf's made-up case, as does a title with no match.
+//   - Store metadata: PC games without a Steam app id can be matched by title to Steam's store. Hand-added and Quiver
+//     games require an exact title match; a custom port sharing a name with an unrelated Steam game is never guessed.
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
@@ -302,6 +301,12 @@ let map = null;
 const mapFile = () => path.join(dataDir, 'pc-steam.json');
 function steamIdOf(title) { if (!map) map = readJson(mapFile()) || {}; const e = map[String(title || '').toLowerCase()]; return e && e.id ? e.id : null; }
 const norm = s => String(s || '').toLowerCase().replace(/[™®©]/g, '').replace(/&/g, 'and').replace(/[^a-z0-9]+/g, ' ').trim();
+function steamMatch(items, title, exactOnly = false) {
+  const want = norm(title), list = (Array.isArray(items) ? items : []).filter(x => x && x.name && x.type !== 'sub');
+  if (!want) return null;
+  return list.find(x => norm(x.name) === want) ||
+    (!exactOnly ? list.find(x => norm(x.name).startsWith(want + ' ') || want.startsWith(norm(x.name) + ' ')) : null) || null;
+}
 function getJson(url, ms = 12000) {
   return new Promise(res => {
     const rq = https.get(url, { headers: { 'User-Agent': 'Boxshelf' }, timeout: ms }, r => { if (r.statusCode !== 200) { r.resume(); return res({ err: 'HTTP ' + r.statusCode }); } let b = ''; r.setEncoding('utf8'); r.on('data', c => { b += c; if (b.length > 2e6) rq.destroy(); }); r.on('end', () => { try { res({ data: JSON.parse(b) }); } catch { res({ err: 'bad reply' }); } }); });
@@ -309,7 +314,7 @@ function getJson(url, ms = 12000) {
   });
 }
 // asks the store for the titles not matched yet (at most 40 a run, a pause between); returns how many were matched
-async function matchSteam(titles) {
+async function matchSteam(titles, options = {}) {
   if (!map) map = readJson(mapFile()) || {};
   const WEEK = 7 * 864e5; let n = 0, asked = 0;
   for (const t of [...new Set(titles.filter(Boolean))]) {
@@ -317,8 +322,8 @@ async function matchSteam(titles) {
     if (++asked > 40) break;
     const r = await getJson('https://store.steampowered.com/api/storesearch/?term=' + encodeURIComponent(t) + '&l=english&cc=US');
     if (r.err) { log('PC art: Steam search', r.err); break; } // offline or rate-limited: try again next time
-    const items = r.data && Array.isArray(r.data.items) ? r.data.items : [], want = norm(t);
-    const hit = items.find(x => norm(x.name) === want) || items.find(x => norm(x.name).startsWith(want + ' ') || want.startsWith(norm(x.name) + ' '));
+    const items = r.data && Array.isArray(r.data.items) ? r.data.items : [];
+    const hit = steamMatch(items, t, !!options.exactOnly);
     map[k] = { id: hit ? +hit.id : 0, at: Date.now() }; if (hit) n++;
     await new Promise(r => setTimeout(r, 400));
   }
@@ -345,5 +350,5 @@ async function steamSearch(term, exact) {
   const want = norm(t); return items.filter(x => norm(x.name) === want).slice(0, 3);
 }
 
-module.exports = { init, epicGames, quiverGames, quiverFind, quiverRoots, customGames, placeCustom, titleFromExe, mainExe, remember, byId, all, steamIdOf, matchSteam, steamSearch, EPIC_DIR,
+module.exports = { init, epicGames, quiverGames, quiverFind, quiverRoots, customGames, placeCustom, titleFromExe, mainExe, remember, byId, all, steamIdOf, matchSteam, steamMatch, steamSearch, EPIC_DIR,
   storeGames, gogGames, ubisoftGames, eaGames, xboxGames, parseReg, xboxRoots, eaFromDirs, xboxScan };

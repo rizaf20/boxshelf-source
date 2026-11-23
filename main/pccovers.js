@@ -50,6 +50,20 @@ async function options(game) {
   const id = String(game.id), keys = {}, list = [];
   const mine = cover(id); if (mine) list.push({ key: 'current', thumb: o.fileUrl(mine), source: 'yours', label: 'Your choice now', sub: 'Chosen before' });
   if (game.appid) { const s = o.steamCover(game.appid); if (s) { keys.steam = { file: s }; list.push({ key: 'steam', thumb: o.fileUrl(s), source: 'steam', label: "Steam's cover", sub: 'From your Steam library' }); } }
+  if (!game.appid && o.launchboxCandidates) {
+    try {
+      const launchbox = await o.launchboxCandidates(game.title);
+      for (let i = 0; i < (launchbox || []).slice(0, 12).length; i++) {
+        const c = launchbox[i];
+        if (!c || typeof c.url !== 'string') continue;
+        const t = await thumb(c.url);
+        if (!t) continue;
+        const k = 'lb' + i;
+        keys[k] = { url: c.url };
+        list.push({ key: k, thumb: o.fileUrl(t), source: 'launchbox', label: 'LaunchBox', sub: c.region || c.label || 'Windows cover' });
+      }
+    } catch (e) { o.log('PC cover: LaunchBox', e.message); }
+  }
   // (beta.9) with no key at all: Steam's official cover from its public store (no account): a Steam game's own when Steam
   // hasn't kept it on this PC, and for any other game the Steam games of that name (the player picks: a name can be shared)
   try {

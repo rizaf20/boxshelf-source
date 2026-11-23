@@ -255,7 +255,7 @@ function buildHome(){
     let sh=COLS.get(id);if(!sh){sh={id,kind:"home",col:true,name:"",games:[],items:[],hasEmulator:false};COLS.set(id,sh)}
     sh.auto=false;sh.name=String(c.name||"Collection");sh.items=its;sh.games=its;cols.push(sh)}
   let list=allShelves.filter(s=>s!==HOME);
-  const hiddenTabs=hiddenShelfTabs();list=list.filter(s=>s.kind!=="console"||!hiddenTabs.has(String(s.id)));
+  const hiddenTabs=hiddenShelfTabs();list=list.filter(s=>((s.kind==="console"||s.id==="pc"||s.id==="custom")? !hiddenTabs.has(String(s.id)) : true));
   // Android: a console set up without any games yet (RetroArch alone can enable a dozen) gets no tab of its own; if that
   // would leave nothing at all, they stay so the shelf can still say what to do next
   if(ON_ANDROID){const full=list.filter(hasGames);if(full.length)list=full}

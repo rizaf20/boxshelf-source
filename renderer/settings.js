@@ -105,7 +105,7 @@ const shown=r=>!r.when||r.when();
 function consoleList(){return info&&info.consoles||[]}
 const tabRowMemo=new Map();
 function hiddenShelfTabs(){const h=gp("ui.hiddenShelves");return Array.isArray(h)?h.map(String):[]}
-function consoleTabRows(){return consoleList().map(c=>{let r=tabRowMemo.get(c.id);if(!r){r={t:"toggle",label:c.name,info:`Off hides the ${c.name} tab only. Its games stay available on Home, My shelves, in search and in the museum.`,
+function consoleTabRows(){return [...consoleList(),{id:"pc",name:"PC"},{id:"custom",name:"Custom"}].map(c=>{let r=tabRowMemo.get(c.id);if(!r){r={t:"toggle",label:c.name,info:`Off hides the ${c.name} tab only. Its games stay available on Home, My shelves, in search and in the museum.`,
     get:()=>!hiddenShelfTabs().includes(c.id),set:v=>{const h=hiddenShelfTabs(),i=h.indexOf(c.id);if(v&&i>=0)h.splice(i,1);if(!v&&i<0)h.push(c.id);cfg.ui.hiddenShelves=h},
     live:()=>shelf("setHiddenShelves",hiddenShelfTabs()),ns:true,keys:`console tab hide shelf ${c.name.toLowerCase()}`};tabRowMemo.set(c.id,r)}r.label=c.name;return r})}
 // the Consoles grid's order: your shelves first, hidden ones after (dimmed); every use of the grid's position goes
@@ -1100,12 +1100,12 @@ function covLoad(force){if(!api.pcCoverMissing||COV.loading||(COV.n!=null&&!forc
   Promise.resolve(api.pcCoverMissing()).then(L=>{COV.n=Array.isArray(L)?L.length:0}).catch(()=>{COV.n=0}).finally(()=>{COV.loading=false;bump()})}
 /* Existing games can stay on Custom or PC; enabled consoles come first when they have ROM folders. */
 function customShelfOpts(current){const L=consoleList().filter(c=>c&&c.id&&(sysCfg(c.id).enabled!==false||c.id===current)),has=c=>{const s=sysCfg(c.id);return !!(s.enabled&&(s.romDirs||[]).length)};
-  return [["custom","Custom"],["pc","PC"],...L.filter(has).map(c=>[c.id,c.name||c.id]),...L.filter(c=>!has(c)).map(c=>[c.id,c.name||c.id])]}
-function addShelfOpts(){return [["custom","Custom"],...consoleList().filter(c=>c&&c.id&&sysCfg(c.id).enabled!==false).map(c=>[c.id,c.name||c.id])]}
-function addShelfValue(){const id=ADD.shelf||"custom";return addShelfOpts().some(o=>o[0]===id)?id:"custom"}
-function shelfName(id){return (addShelfOpts().find(o=>o[0]===id)||["custom","Custom"])[1]}
-function addShelfRow(){return {t:"choice",label:"New games go to",opts:addShelfOpts,info:"Choose where programs you add or import go. Custom is the default; only enabled consoles are listed.",
-  d:"custom",get:addShelfValue,set:v=>{ADD.shelf=addShelfOpts().some(o=>o[0]===v)?v:"custom"},ns:true,keys:"new game shelf custom console"}}
+  return [["pc","PC"],["custom","Custom"],...L.filter(has).map(c=>[c.id,c.name||c.id]),...L.filter(c=>!has(c)).map(c=>[c.id,c.name||c.id])]}
+function addShelfOpts(){return [["pc","PC"],["custom","Custom"],...consoleList().filter(c=>c&&c.id&&sysCfg(c.id).enabled!==false).map(c=>[c.id,c.name||c.id])]}
+function addShelfValue(){const id=ADD.shelf||"pc";return addShelfOpts().some(o=>o[0]===id)?id:"pc"}
+function shelfName(id){return (addShelfOpts().find(o=>o[0]===id)||["pc","PC"])[1]}
+function addShelfRow(){return {t:"choice",label:"New games go to",opts:addShelfOpts,info:"Choose where programs you add or import go. PC is the default; only enabled consoles are listed.",
+  d:"pc",get:addShelfValue,set:v=>{ADD.shelf=addShelfOpts().some(o=>o[0]===v)?v:"pc"},ns:true,keys:"new game shelf pc custom console"}}
 function customGamePage(c,i){
   const pageId=`custom-game-${i}-${addSlug(c.id||c.exe)}`,title=c.title||"Game";
   let nr=customNameRows.get(c);if(!nr){nr=X("Name","","The game's name on the shelf. Program: "+c.exe,{get:()=>c.title||"",set:v=>{c.title=String(v||"").slice(0,120);if(MORE[pageId])MORE[pageId].name=c.title||"Game"},rescan:true,ns:true,keys:"rename custom game name title"});customNameRows.set(c,nr)}
@@ -1426,7 +1426,7 @@ async function trailerSave(v,typed){const s=trailerState;if(!s||!api.trailerSet|
 // isn't added twice); Add puts the ticked ones on the shelf. Playnite (experimental): a summary to tick (PC games,
 // each console's games folders, what's left out and why), Import, and Remove what was imported.
 const pcCfg=()=>{cfg.pc=cfg.pc||{};if(!Array.isArray(cfg.pc.custom))cfg.pc.custom=[];return cfg.pc};
-const ADD={list:null,pn:null,pnOn:{pc:true},pnPick:new Set(),busy:false,rows:null,pnFound:undefined,shelf:"custom"};
+const ADD={list:null,pn:null,pnOn:{pc:true},pnPick:new Set(),busy:false,rows:null,pnFound:undefined,shelf:"pc"};
 const addSlug=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,60)||"game";
 function addReset(){ADD.rows=null;bump()}
 function addFound(items){const have=new Set(pcCfg().custom.map(c=>String(c.exe).toLowerCase()));ADD.pn=null;

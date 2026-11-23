@@ -4,7 +4,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const config = require('../config');
-const { customGames, placeCustom } = require('../pcgames');
+const { customGames, placeCustom, steamMatch } = require('../pcgames');
+const steamart = require('../steamart');
 const paths = require('../paths');
 const { gameFromFile } = require('../scanner');
 const covers = require('../covers');
@@ -60,11 +61,34 @@ try {
   assert.equal(normalized.pc.custom[1].shelf, undefined);
   const imported = customGames(normalized.pc.custom);
   assert.equal(imported[0].shelf, 'n64');
+  assert.equal(covers.LAUNCHBOX.pc, 'Windows');
+  assert.equal(steamMatch([{ id: 1, name: 'Ported Game' }, { id: 2, name: 'Ported Game Deluxe' }], 'Ported Game', true).id, 1);
+  assert.equal(steamMatch([{ id: 2, name: 'Ported Game Deluxe' }], 'Ported Game', true), null);
+  let requests = 0;
+  steamart.init(path.join(temp, 'steam-info'), () => {}, async () => {
+    requests++;
+    return { ok: true, json: async () => ({ 123: { success: true, data: {
+      name: 'Ported Game', release_date: { date: 'Mar 4, 2022' }, developers: ['Studio'], publishers: ['Publisher'],
+      genres: [{ description: 'Adventure' }], short_description: 'Store summary',
+      screenshots: [{ path_full: 'https://example.test/shot.jpg' }]
+    } } }) };
+  });
+  assert.equal(await steamart.fillInfo([{ appid: '123', title: 'Ported Game' }]), 1);
+  assert.equal(steamart.gameInfo('123').genres, 'Adventure');
+  assert.equal(steamart.gameInfo('123').shots.length, 1);
+  assert.equal(await steamart.fillInfo([{ appid: '123', title: 'Ported Game' }]), 0);
+  assert.equal(requests, 1);
   const assignedShelves = [{ id: 'n64', kind: 'console', name: 'Nintendo 64', games: [] }];
   const placed = placeCustom(assignedShelves, imported, systems, item => ({ kind: 'steam', ...item }));
   assert.equal(assignedShelves[0].games[0].directExe, true);
   assert.equal(assignedShelves[0].games[0].file, file);
   assert.equal(placed.onCustom[0].title, 'Custom Game');
+
+  const pcImported = customGames([{ id: 'pc-game', title: 'Windows Port', exe: defaultFile, args: '', shelf: 'pc' }]);
+  const pcPlaced = placeCustom([], pcImported, systems, item => ({ kind: 'steam', ...item }));
+  assert.equal(pcPlaced.toPc.length, 1);
+  assert.equal(pcPlaced.toPc[0].title, 'Windows Port');
+  assert.equal(pcPlaced.onCustom.length, 0);
 } finally {
   fs.rmSync(temp, { recursive: true, force: true });
 }

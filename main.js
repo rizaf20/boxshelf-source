@@ -771,8 +771,11 @@ async function buildLibrary() {
   pcgames.remember([...epic, ...mine]);
   // (Steam art by title only for Epic's store games: a recomp or a program added by hand often shares its name with an
   // unrelated Steam game, "Quarantine" got a puzzle game's cover; they keep the made-up case)
-  const pcGame = g => { const sid = STORE_SRC.has(g.source) ? pcgames.steamIdOf(g.title) : null, l = sid ? steamart.local(sid) : {};
-    return { kind: 'steam', source: g.source, id: g.id, title: g.title, ...(sid ? { info: steamart.gameInfo(sid) } : {}), art: { front: fileUrl(pccovers.cover(g.id) || l.front), back: fileUrl(pccovers.back(g.id)), hero: fileUrl(l.hero), icon: g.icon || undefined } }; };
+  const pcGame = g => { const sid = STORE_SRC.has(g.source) || g.source === 'custom' || g.source === 'quiver' ? pcgames.steamIdOf(g.title) : null, l = sid ? steamart.local(sid) : {};
+    const lb = g.source === 'custom' || g.source === 'quiver' ? covers.gameInfo('pc', g.title) : null;
+    const steamInfo = sid ? steamart.gameInfo(sid) : null;
+    const info = moreShotsInfo('pc', g, steamInfo || lb);
+    return { kind: 'steam', source: g.source, id: g.id, title: g.title, ...(sid ? { steamAppId: String(sid) } : {}), ...(info ? { info } : {}), art: { front: fileUrl(pccovers.cover(g.id) || l.front), back: fileUrl(pccovers.back(g.id)), hero: fileUrl(l.hero), icon: g.icon || undefined } }; };
   // (beta.10) a game added by hand can be moved to the PC shelf (Settings → Custom games → the game → Shelf); (beta.14) or
   // to any console's shelf (one is made for it if that console has none); an id that isn't a console stays on Custom
   const { toPc, onCustom } = pcgames.placeCustom(shelves, mine, CONSOLES, pcGame);
@@ -1268,21 +1271,27 @@ function renderEpubManual(root, pages) {
     })();
   });
 }
-// Steam games missing a cover (or store info): fetch them in the background, then refresh the shelf once
+// Match PC games without a Steam app id by title and fetch Steam store details. Automatic artwork still follows
+// the player's auto-cover setting; hand-added games require an exact title match to avoid unrelated matches.
 let steamFilling = false;
 async function steamFill(lib) {
-  if (steamFilling || cfg.ui.autoCovers === false) return; const pcs = lib.filter(s => s.kind === 'steam'); if (!pcs.length) return;
+  if (steamFilling) return; const pcs = lib.filter(s => s.kind === 'steam'); if (!pcs.length) return;
   steamFilling = true;
   try {
-    const all = pcs.flatMap(s => s.games); let games = all.filter(g => !g.source || g.source === 'steam'), matched = 0;
-    // (beta.4) Epic / Quiver / hand-added games: their titles are matched to Steam apps (only with box art downloads turned
-    // on in setup or Settings: it sends the titles to Steam's store search), then filled like Steam's own
-    const others = all.filter(g => STORE_SRC.has(g.source)); // (only the stores' games: see buildLibrary's pcGame)
-    if (others.length && cfg.ui.autoCovers === true) {
-      matched = await pcgames.matchSteam(others.map(g => g.title));
-      games = games.concat(others.map(g => { const id = pcgames.steamIdOf(g.title); return id ? { appid: String(id), title: g.title, art: { front: g.art.front, hero: g.art.hero } } : null; }).filter(Boolean));
-    }
-    const r = await steamart.fill(games); if ((r.covers || r.other || matched) && alive()) win.webContents.send('library:changed', { covers: r.covers });
+    const all = pcs.flatMap(s => s.games), stores = all.filter(g => STORE_SRC.has(g.source));
+    const handAdded = all.filter(g => g.source === 'custom' || g.source === 'quiver');
+    let matched = 0;
+    if (stores.length) matched += await pcgames.matchSteam(stores.map(g => g.title));
+    if (handAdded.length) matched += await pcgames.matchSteam(handAdded.map(g => g.title), { exactOnly: true });
+    const matchedGames = [...stores, ...handAdded].map(g => {
+      const id = pcgames.steamIdOf(g.title);
+      return id ? { appid: String(id), title: g.title, art: { front: g.art && g.art.front, hero: g.art && g.art.hero } } : null;
+    }).filter(Boolean);
+    const nativeSteam = all.filter(g => !g.source || g.source === 'steam');
+    const nativeSteamApps = nativeSteam.map(g => ({ appid: String(g.appid || ''), title: g.title, art: g.art || {} }));
+    const info = await steamart.fillInfo(nativeSteamApps.concat(matchedGames));
+    const r = cfg.ui.autoCovers === false ? { covers: 0, other: 0 } : await steamart.fill(nativeSteamApps.concat(matchedGames));
+    if ((r.covers || r.other || matched || info) && alive()) win.webContents.send('library:changed', { covers: r.covers });
   } /* heroes and store info: a quiet refresh, no toast */ catch (e) { log('steam art failed', e.message); } finally { steamFilling = false; }
 }
 let autoManualsDone = false, autoManualJob = null, manualSeen = null, manualAgain = false;
@@ -2479,7 +2488,8 @@ handle('preview:find', async ({ systemId, file, title, id, youtube }) => {
     if (f) { previewOk.add(path.resolve(f).toLowerCase()); return { type: 'file', url: fileUrl(f) }; }
   }
   const m = /^steam-(\d+)$/.exec(String(id || ''));
-  if (m) { const f = await previews.steamClip(m[1]); if (f) return { type: 'file', url: fileUrl(f), steam: true }; }
+  const matched = m ? m[1] : (() => { const g = (lastLib || []).flatMap(s => s.games || []).find(x => x && x.id === id); return g && /^\d{1,10}$/.test(String(g.steamAppId || '')) ? String(g.steamAppId) : ''; })();
+  if (matched) { const f = await previews.steamClip(matched); if (f) return { type: 'file', url: fileUrl(f), steam: true }; }
   // (beta.14) a console game: main/trailers.js picks its trailer (ScreenScraper's gameplay clip, IGDB's trailer, the LaunchBox
   // link, a YouTube search; your Change trailer choice first)
   if (systemId && file && CONSOLES.some(c => c.id === systemId)) return trailerFind({ systemId, file, title, youtube });
@@ -3235,7 +3245,7 @@ function startUp() {
   stremio.init({ log, fanartKey: () => (cfg && cfg.keys && cfg.keys.fanart) || '', artDir: path.join(app.getPath('userData'), 'stremio-art'), fetchBuf: async url => { const r = await net.fetch(url, { signal: AbortSignal.timeout(30000) }); /* (beta.10: a stalled answer gives up) */ if (r.status === 404) return null; if (!r.ok) throw new Error('HTTP ' + r.status); return Buffer.from(await r.arrayBuffer()); } }); // null = really not there; other failures throw, so nothing "missing" is cached for them
   icons.init(app.getPath('userData'), log);
   x360.init(app.getPath('userData'), log); scanSetLog(log); // (beta.10: games folders that can't be read go in the log)
-  steamart.init(app.getPath('userData'), log); pcgames.init(app.getPath('userData'), log); pccovers.init({ dataDir: app.getPath('userData'), log, fileUrl, fetchImage, steamgrid: require('./main/steamgrid'), steamCover: id => steamart.local(id).front, match: covers.sgMatch, steamSearch: (t, exact) => pcgames.steamSearch(t, exact) });
+  steamart.init(app.getPath('userData'), log); pcgames.init(app.getPath('userData'), log); pccovers.init({ dataDir: app.getPath('userData'), log, fileUrl, fetchImage, steamgrid: require('./main/steamgrid'), steamCover: id => steamart.local(id).front, match: covers.sgMatch, steamSearch: (t, exact) => pcgames.steamSearch(t, exact), launchboxCandidates: async (title) => await covers.candidates('pc', { title }, 'front', { libretro: false, tdb: false }) });
   wiiumanual.init(app.getPath('userData'), log);
   ra.init(app.getPath('userData'), log); ra.setCredentials(cfg.ra && cfg.ra.enabled !== false ? cfg.ra.user : '', cfg.ra && cfg.ra.key);
   manuals.init(log); archive.init(log); manuals.setStore(path.join(app.getPath('userData'), 'manual-auto.json')); manuals.setRejectStore(path.join(app.getPath('userData'), 'manual-rejects.json'));

@@ -12,7 +12,7 @@ const crypto = require('crypto');
 
 const GAP = 300, MEMO = 30 * 60e3, MEMO_N = 200, RETRY = 30 * 864e5;
 // IGDB's platform ids for Boxshelf's consoles (the search is narrowed to the game's console)
-const PLAT = { gc: 21, wii: 5, wiiu: 41, sw: 130, psx: 7, ps2: 8, ps3: 9, ps4: 48, psp: 38, psvita: 46, n64: 4, snes: 19, nes: 18, gba: 24, gb: 33, gbc: 22, nds: 20, n3ds: 37,
+const PLAT = { gc: 21, wii: 5, wiiu: 41, sw: 130, pc: 6, psx: 7, ps2: 8, ps3: 9, ps4: 48, psp: 38, psvita: 46, n64: 4, snes: 19, nes: 18, gba: 24, gb: 33, gbc: 22, nds: 20, n3ds: 37,
   megadrive: 29, saturn: 32, dreamcast: 23, mastersystem: 64, gamegear: 35, pcengine: 86, x360: 12, xbox: 11, segacd: 78, sega32x: 30, atari2600: 59, atarilynx: 61, wonderswan: 57, neogeo: 80, dos: 13 };
 const FIELDS = 'name,summary,first_release_date,total_rating,genres.name,involved_companies.company.name,involved_companies.developer,involved_companies.publisher,franchise.name,franchises.name,screenshots.image_id';
 const titleOf = g => String((g && g.title) || '').replace(/\s*[([].*?[)\]]/g, '').replace(/["\\]/g, '').trim();
